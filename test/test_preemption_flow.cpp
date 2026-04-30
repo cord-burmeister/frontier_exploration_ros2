@@ -431,6 +431,32 @@ TEST(PreemptionFlowTests, SupersededResultCallbackDoesNotClearActiveState)
   EXPECT_TRUE(core->goal_in_progress);
 }
 
+TEST(PreemptionFlowTests, LateRejectedCancelResponseDoesNotResurrectCompletedGoal)
+{
+  auto core = make_preemption_core();
+  auto fake_handle = std::make_shared<FakeGoalHandle>();
+  core->goal_handle = fake_handle;
+
+  core->request_active_goal_cancel("cancel for completed goal race");
+  ASSERT_EQ(fake_handle->cancel_calls, 1);
+  ASSERT_TRUE(core->cancel_request_in_progress);
+  ASSERT_EQ(core->goal_state, GoalLifecycleState::CANCELING);
+
+  core->get_result_callback(
+    core->current_dispatch_id,
+    action_msgs::msg::GoalStatus::STATUS_CANCELED,
+    0,
+    "");
+  ASSERT_FALSE(core->goal_in_progress);
+  ASSERT_FALSE(core->cancel_request_in_progress);
+
+  fake_handle->resolve_cancel(false, "");
+
+  EXPECT_FALSE(core->goal_in_progress);
+  EXPECT_FALSE(core->cancel_request_in_progress);
+  EXPECT_EQ(core->goal_state, GoalLifecycleState::IDLE);
+}
+
 TEST(PreemptionFlowTests, CostmapTriggerOnlyChecksBlockingAndSkipsReselection)
 {
   auto core = make_preemption_core();

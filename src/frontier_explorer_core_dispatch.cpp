@@ -630,6 +630,12 @@ void FrontierExplorerCore::cancel_response_callback(
     return;
   }
 
+  if (!cancel_request_in_progress || goal_state != GoalLifecycleState::CANCELING) {
+    // Result handling or a newer dispatch may have already closed this cancel path.
+    // Late cancel responses must not resurrect an active goal after cleanup.
+    return;
+  }
+
   if (!error_message.empty()) {
     cancel_request_in_progress = false;
     set_goal_state(GoalLifecycleState::ACTIVE);
