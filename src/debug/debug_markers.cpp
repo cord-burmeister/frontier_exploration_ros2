@@ -429,7 +429,7 @@ visualization_msgs::msg::MarkerArray make_mrtsp_score_markers(
     // the MRTSP cost breakdown that explains the rank.
     std::ostringstream left_label;
     left_label << "#" << candidate.id
-               << "\nscore=" << fixed(candidate.mrtsp_start_cost, 3)
+               << "\ncost=" << fixed(candidate.mrtsp_start_cost, 3)
                << "\ngain=" << fixed(candidate.mrtsp_gain, 0);
     markers.markers.push_back(
       text_marker(

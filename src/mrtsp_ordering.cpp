@@ -100,7 +100,7 @@ double lower_bound_time_cost(
     target_point.first - robot_state.position[0]);
   const double yaw_delta = std::abs(angle_wrap(target_yaw - robot_state.yaw));
   const double heading_term = std::min(yaw_delta, (2.0 * kPi) - yaw_delta) / wmax;
-  return std::min(distance_term, heading_term);
+  return (distance_term + heading_term);
 }
 
 double compute_mrtsp_start_cost(
@@ -128,7 +128,7 @@ double compute_mrtsp_start_cost(
     candidate.center_point,
     max_linear_speed_vmax,
     max_angular_speed_wmax);
-  return ((weights.distance_wd * path_cost) / gain) + motion_time_cost;
+  return ((weights.distance_wd * path_cost) / gain) + (motion_time_cost / std::sqrt(gain));
 }
 
 MrtspCostMatrix build_cost_matrix(

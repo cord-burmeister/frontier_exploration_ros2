@@ -205,7 +205,7 @@ FrontierSearchOptions FrontierExplorerCore::frontier_search_options() const
   options.candidate_min_goal_distance_m = params.frontier_candidate_min_goal_distance_m;
   options.use_local_costmap_for_frontier_eligibility = !mrtsp_enabled();
   options.out_of_bounds_costmap_is_blocked = mrtsp_enabled();
-  options.build_navigation_goal_point = !mrtsp_enabled();
+  options.build_navigation_goal_point = true;
   return options;
 }
 
