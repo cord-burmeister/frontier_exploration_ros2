@@ -605,7 +605,7 @@ geometry_msgs::msg::PoseStamped FrontierExplorerCore::build_dispatch_goal_pose(
     return fallback_goal_pose;
   }
 
-  const auto is_dispatch_cell_eligible = [this, &current_pose](int map_x, int map_y) {
+  const auto is_dispatch_cell_eligible = [this, &current_pose, &target_point](int map_x, int map_y) {
       if (map->getCost(map_x, map_y) != static_cast<int>(OccupancyGrid2d::CostValues::FreeSpace)) {
         return false;
       }
@@ -615,6 +615,13 @@ geometry_msgs::msg::PoseStamped FrontierExplorerCore::build_dispatch_goal_pose(
         world_point.first - current_pose.position.x,
         world_point.second - current_pose.position.y);
       if (robot_distance < params.frontier_selection_min_distance) {
+        return false;
+      }
+
+      const double target_distance = std::hypot(
+        world_point.first - target_point.first,
+        world_point.second - target_point.second);
+      if (target_distance < params.frontier_selection_min_distance) {
         return false;
       }
 
