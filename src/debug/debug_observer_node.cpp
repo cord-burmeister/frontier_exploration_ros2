@@ -44,6 +44,8 @@ namespace frontier_exploration_ros2::debug
 namespace
 {
 
+constexpr const char * kChunkCacheTopic = "explore/debug/chunk_cache";
+
 std::size_t positive_size_parameter(
   const rclcpp::Node & node,
   const std::string & name,
@@ -265,6 +267,9 @@ private:
     decision_map_pub_ = create_publisher<nav_msgs::msg::OccupancyGrid>(
       decision_map_topic_,
       10);
+    chunk_cache_pub_ = create_publisher<visualization_msgs::msg::MarkerArray>(
+      kChunkCacheTopic,
+      10);
 
     // The periodic timer makes debug output predictable and avoids running heavy
     // analysis directly inside map or costmap subscription callbacks.
@@ -345,7 +350,8 @@ private:
         *map,
         *costmap,
         local_costmap,
-        analyzer_config_);
+        analyzer_config_,
+        decision_map_workspace_);
 
       if (show_raw_frontiers_) {
         raw_frontiers_pub_->publish(make_raw_frontier_markers(snapshot, marker_config_));
@@ -365,6 +371,7 @@ private:
       if (show_decision_map_) {
         decision_map_pub_->publish(snapshot.decision_map_msg);
       }
+      chunk_cache_pub_->publish(make_decision_map_chunk_cache_markers(snapshot, marker_config_));
       if (!first_successful_publish_logged_) {
         // A one-time success message confirms that all required inputs were
         // received and at least one complete overlay set reached the publishers.
@@ -420,12 +427,14 @@ private:
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr mrtsp_order_pub_;
   rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr dp_pruning_pub_;
   rclcpp::Publisher<nav_msgs::msg::OccupancyGrid>::SharedPtr decision_map_pub_;
+  rclcpp::Publisher<visualization_msgs::msg::MarkerArray>::SharedPtr chunk_cache_pub_;
   rclcpp::TimerBase::SharedPtr analysis_timer_;
 
   std::mutex data_mutex_;
   std::optional<OccupancyGrid2d> map_;
   std::optional<OccupancyGrid2d> costmap_;
   std::optional<OccupancyGrid2d> local_costmap_;
+  DecisionMapWorkspace decision_map_workspace_;
   std::unordered_map<std::string, std::optional<int64_t>> warning_times_;
 };
 

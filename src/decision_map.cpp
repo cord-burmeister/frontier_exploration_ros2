@@ -28,6 +28,7 @@ namespace
 {
 
 constexpr double kGeometryEpsilon = 1e-9;
+constexpr int kRawDiffChunkSizeCells = 32;
 // Threshold between UNKNOWN and FREE after filtering the paper-domain intensities.
 constexpr float kFreeThreshold =
   static_cast<float>((static_cast<int>(PAPER_FREE) + static_cast<int>(PAPER_UNKNOWN)) / 2.0);
@@ -96,12 +97,18 @@ void resize_workspace_for_geometry(
   const int width = static_cast<int>(reference.info.width);
   const int height = static_cast<int>(reference.info.height);
   const std::size_t cell_count = static_cast<std::size_t>(width * height);
+  const int chunk_cols = (width + kRawDiffChunkSizeCells - 1) / kRawDiffChunkSizeCells;
+  const int chunk_rows = (height + kRawDiffChunkSizeCells - 1) / kRawDiffChunkSizeCells;
+  const std::size_t chunk_count =
+    static_cast<std::size_t>(std::max(0, chunk_cols * chunk_rows));
 
   workspace.width = width;
   workspace.height = height;
   workspace.resolution = reference.info.resolution;
   workspace.origin_x = reference.info.origin.position.x;
   workspace.origin_y = reference.info.origin.position.y;
+  workspace.chunk_cols = chunk_cols;
+  workspace.chunk_rows = chunk_rows;
 
   assign_image_geometry(workspace.raw_image, width, height);
   assign_image_geometry(workspace.raw_scratch_image, width, height);
@@ -115,6 +122,8 @@ void resize_workspace_for_geometry(
   clear_row_spans(workspace.dirty_spans_by_row, height);
   clear_row_spans(workspace.filter_spans_by_row, height);
   clear_row_spans(workspace.dilation_spans_by_row, height);
+  workspace.raw_occupancy_cache.assign(cell_count, static_cast<int8_t>(-1));
+  workspace.dirty_chunk_flags.assign(chunk_count, 0U);
 
   workspace.optimized_map_msg->header = reference.header;
   workspace.optimized_map_msg->info = reference.info;
@@ -347,47 +356,115 @@ void build_expanded_row_spans(
   }
 }
 
-// Re-materializes the raw paper image and records which cells actually changed.
-void populate_raw_scratch_and_detect_dirty(
-  const OccupancyGrid2d & occupancy_map,
+void mark_chunk_dirty_rows(
   DecisionMapWorkspace & workspace,
-  bool geometry_changed)
+  int chunk_x,
+  int chunk_y)
 {
-  clear_row_spans(workspace.dirty_spans_by_row, workspace.height);
+  const int x_min = chunk_x * kRawDiffChunkSizeCells;
+  const int y_min = chunk_y * kRawDiffChunkSizeCells;
+  const int x_max = std::min(workspace.width, x_min + kRawDiffChunkSizeCells) - 1;
+  const int y_max = std::min(workspace.height, y_min + kRawDiffChunkSizeCells) - 1;
 
-  const auto & map_data = occupancy_map.map().data;
-  for (int y = 0; y < workspace.height; ++y) {
+  for (int y = y_min; y <= y_max; ++y) {
+    workspace.dirty_spans_by_row[static_cast<std::size_t>(y)].emplace_back(x_min, x_max);
+  }
+}
+
+[[nodiscard]] bool chunk_raw_occupancy_changed(
+  const std::vector<int8_t> & map_data,
+  const DecisionMapWorkspace & workspace,
+  int chunk_x,
+  int chunk_y)
+{
+  const int x_min = chunk_x * kRawDiffChunkSizeCells;
+  const int y_min = chunk_y * kRawDiffChunkSizeCells;
+  const int x_max = std::min(workspace.width, x_min + kRawDiffChunkSizeCells);
+  const int y_max = std::min(workspace.height, y_min + kRawDiffChunkSizeCells);
+
+  for (int y = y_min; y < y_max; ++y) {
     const std::size_t row_offset =
       static_cast<std::size_t>(y) * static_cast<std::size_t>(workspace.width);
-    int span_start = -1;
-
-    for (int x = 0; x < workspace.width; ++x) {
+    for (int x = x_min; x < x_max; ++x) {
       const std::size_t idx = row_offset + static_cast<std::size_t>(x);
-      const uint8_t paper_value =
-        workspace.occupancy_to_paper_lut[static_cast<uint8_t>(map_data[idx])];
-      workspace.raw_scratch_image.data[idx] = paper_value;
-
-      const bool changed =
-        geometry_changed ||
-        !workspace.initialized ||
-        workspace.raw_image.data[idx] != paper_value;
-
-      if (changed) {
-        if (span_start < 0) {
-          span_start = x;
-        }
-      } else if (span_start >= 0) {
-        workspace.dirty_spans_by_row[static_cast<std::size_t>(y)].emplace_back(span_start, x - 1);
-        span_start = -1;
+      if (workspace.raw_occupancy_cache[idx] != map_data[idx]) {
+        return true;
       }
     }
+  }
 
-    if (span_start >= 0) {
-      workspace.dirty_spans_by_row[static_cast<std::size_t>(y)].emplace_back(
-        span_start,
-        workspace.width - 1);
+  return false;
+}
+
+void rebuild_raw_chunk(
+  const OccupancyGrid2d & occupancy_map,
+  DecisionMapWorkspace & workspace,
+  int chunk_x,
+  int chunk_y)
+{
+  const auto & map_data = occupancy_map.map().data;
+  const int x_min = chunk_x * kRawDiffChunkSizeCells;
+  const int y_min = chunk_y * kRawDiffChunkSizeCells;
+  const int x_max = std::min(workspace.width, x_min + kRawDiffChunkSizeCells);
+  const int y_max = std::min(workspace.height, y_min + kRawDiffChunkSizeCells);
+
+  for (int y = y_min; y < y_max; ++y) {
+    const std::size_t row_offset =
+      static_cast<std::size_t>(y) * static_cast<std::size_t>(workspace.width);
+    for (int x = x_min; x < x_max; ++x) {
+      const std::size_t idx = row_offset + static_cast<std::size_t>(x);
+      const int8_t occupancy_value = map_data[idx];
+      workspace.raw_occupancy_cache[idx] = occupancy_value;
+      workspace.raw_image.data[idx] =
+        workspace.occupancy_to_paper_lut[static_cast<uint8_t>(occupancy_value)];
     }
   }
+}
+
+// Re-materializes only dirty raw chunks and records the chunk rectangles that changed.
+void populate_chunked_raw_image_and_detect_dirty(
+  const OccupancyGrid2d & occupancy_map,
+  DecisionMapWorkspace & workspace,
+  bool force_full_raw_rebuild)
+{
+  clear_row_spans(workspace.dirty_spans_by_row, workspace.height);
+  if (!workspace.dirty_chunk_flags.empty()) {
+    std::fill(
+      workspace.dirty_chunk_flags.begin(),
+      workspace.dirty_chunk_flags.end(),
+      0U);
+  }
+
+  const auto & map_data = occupancy_map.map().data;
+  for (int chunk_y = 0; chunk_y < workspace.chunk_rows; ++chunk_y) {
+    for (int chunk_x = 0; chunk_x < workspace.chunk_cols; ++chunk_x) {
+      const std::size_t chunk_index =
+        static_cast<std::size_t>(chunk_y) * static_cast<std::size_t>(workspace.chunk_cols) +
+        static_cast<std::size_t>(chunk_x);
+      const bool chunk_changed =
+        force_full_raw_rebuild ||
+        chunk_raw_occupancy_changed(map_data, workspace, chunk_x, chunk_y);
+      if (!chunk_changed) {
+        continue;
+      }
+
+      workspace.dirty_chunk_flags[chunk_index] = 1U;
+      rebuild_raw_chunk(occupancy_map, workspace, chunk_x, chunk_y);
+      mark_chunk_dirty_rows(workspace, chunk_x, chunk_y);
+    }
+  }
+
+  for (auto & row_spans : workspace.dirty_spans_by_row) {
+    normalize_row_spans(row_spans);
+  }
+}
+
+[[nodiscard]] std::size_t count_dirty_chunks(const DecisionMapWorkspace & workspace)
+{
+  return static_cast<std::size_t>(std::count(
+    workspace.dirty_chunk_flags.begin(),
+    workspace.dirty_chunk_flags.end(),
+    static_cast<uint8_t>(1U)));
 }
 
 // Recomputes only the requested row spans for bilateral filtering and thresholding.
@@ -760,6 +837,11 @@ DecisionMapBuildStatus build_decision_map(
     std::abs(workspace.last_build_sigma_s - config.sigma_s) > kGeometryEpsilon ||
     std::abs(workspace.last_build_sigma_r - config.sigma_r) > kGeometryEpsilon ||
     workspace.last_build_dilation_radius_cells != config.dilation_kernel_radius_cells;
+  status.config_changed = config_changed;
+  const bool raw_classification_changed =
+    !workspace.initialized ||
+    geometry_changed ||
+    workspace.last_occ_threshold != config.occ_threshold;
 
   if (geometry_changed) {
     resize_workspace_for_geometry(workspace, reference);
@@ -770,7 +852,10 @@ DecisionMapBuildStatus build_decision_map(
   }
 
   ensure_occupancy_to_paper_lut_cache(workspace, config.occ_threshold);
-  populate_raw_scratch_and_detect_dirty(raw_map, workspace, geometry_changed);
+  populate_chunked_raw_image_and_detect_dirty(raw_map, workspace, raw_classification_changed);
+  status.total_chunks =
+    static_cast<std::size_t>(std::max(0, workspace.chunk_cols * workspace.chunk_rows));
+  status.dirty_chunks = count_dirty_chunks(workspace);
 
   // Any configuration change invalidates stage-local reuse, so mark the full image dirty.
   if (config_changed) {
@@ -781,10 +866,6 @@ DecisionMapBuildStatus build_decision_map(
     status.output_changed = false;
     return status;
   }
-
-  std::swap(workspace.raw_image.data, workspace.raw_scratch_image.data);
-  workspace.raw_image.width = workspace.width;
-  workspace.raw_image.height = workspace.height;
 
   const bool force_full_output_write = status.geometry_changed || !workspace.initialized || config_changed;
 

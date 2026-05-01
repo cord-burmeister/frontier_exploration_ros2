@@ -196,6 +196,44 @@ void annotate_mrtsp_candidates(
   }
 }
 
+void annotate_decision_map_cache(
+  const DecisionMapWorkspace & decision_map_workspace,
+  const DecisionMapBuildStatus & decision_map_status,
+  FrontierDebugSnapshot & snapshot)
+{
+  snapshot.decision_map_total_chunks = decision_map_status.total_chunks;
+  snapshot.decision_map_dirty_chunks = decision_map_status.dirty_chunks;
+  snapshot.decision_map_geometry_changed = decision_map_status.geometry_changed;
+  snapshot.decision_map_config_changed = decision_map_status.config_changed;
+  snapshot.decision_map_output_reused = decision_map_status.reused_existing_output;
+  snapshot.decision_map_output_changed = decision_map_status.output_changed;
+  snapshot.decision_map_chunks.reserve(decision_map_status.total_chunks);
+
+  for (int chunk_y = 0; chunk_y < decision_map_workspace.chunk_rows; ++chunk_y) {
+    for (int chunk_x = 0; chunk_x < decision_map_workspace.chunk_cols; ++chunk_x) {
+      const std::size_t chunk_index =
+        static_cast<std::size_t>(chunk_y) *
+        static_cast<std::size_t>(decision_map_workspace.chunk_cols) +
+        static_cast<std::size_t>(chunk_x);
+
+      DecisionMapChunkDebugCell cell;
+      cell.chunk_x = chunk_x;
+      cell.chunk_y = chunk_y;
+      if (decision_map_status.geometry_changed) {
+        cell.state = DecisionMapChunkDebugState::GeometryReset;
+      } else if (
+        chunk_index < decision_map_workspace.dirty_chunk_flags.size() &&
+        decision_map_workspace.dirty_chunk_flags[chunk_index] != 0U)
+      {
+        cell.state = DecisionMapChunkDebugState::DirtyRebuild;
+      } else {
+        cell.state = DecisionMapChunkDebugState::CacheHit;
+      }
+      snapshot.decision_map_chunks.push_back(cell);
+    }
+  }
+}
+
 }  // namespace
 
 FrontierDebugSnapshot analyze_frontier_debug_snapshot(
@@ -203,7 +241,8 @@ FrontierDebugSnapshot analyze_frontier_debug_snapshot(
   const OccupancyGrid2d & map,
   const OccupancyGrid2d & costmap,
   const std::optional<OccupancyGrid2d> & local_costmap,
-  const DebugAnalyzerConfig & config)
+  const DebugAnalyzerConfig & config,
+  DecisionMapWorkspace & decision_map_workspace)
 {
   FrontierDebugSnapshot snapshot;
 
@@ -211,10 +250,13 @@ FrontierDebugSnapshot analyze_frontier_debug_snapshot(
   // side by side makes map optimization effects visible without changing the
   // explorer node or publishing any navigation command.
   const FrontierSearchOptions search_options = make_search_options(config);
-  const DecisionMapResult decision_map_result = build_decision_map(
+  const DecisionMapBuildStatus decision_map_status = build_decision_map(
     map,
-    make_decision_map_config(config));
-  snapshot.decision_map_msg = decision_map_result.optimized_map_msg;
+    make_decision_map_config(config),
+    decision_map_workspace);
+  snapshot.decision_map_msg = *decision_map_workspace.optimized_map_msg;
+  annotate_decision_map_cache(decision_map_workspace, decision_map_status, snapshot);
+  const OccupancyGrid2d decision_map(snapshot.decision_map_msg);
 
   // Raw frontiers are extracted from the incoming occupancy map. They are shown
   // as context and are not used for MRTSP score labels.
@@ -232,7 +274,7 @@ FrontierDebugSnapshot analyze_frontier_debug_snapshot(
   // The decision map can be identical to the raw map when optimization is off.
   const auto optimized_search_result = get_frontier(
     current_pose,
-    decision_map_result.decision_map,
+    decision_map,
     costmap,
     local_costmap,
     config.frontier_candidate_min_goal_distance_m,

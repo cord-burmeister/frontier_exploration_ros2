@@ -17,6 +17,7 @@ limitations under the License.
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <string>
 #include <vector>
@@ -24,6 +25,7 @@ limitations under the License.
 #include <geometry_msgs/msg/pose.hpp>
 #include <nav_msgs/msg/occupancy_grid.hpp>
 
+#include "frontier_exploration_ros2/decision_map.hpp"
 #include "frontier_exploration_ros2/frontier_search.hpp"
 #include "frontier_exploration_ros2/frontier_types.hpp"
 
@@ -86,6 +88,20 @@ struct FrontierDebugCandidate
   bool active_order_selected{false};
 };
 
+enum class DecisionMapChunkDebugState : uint8_t
+{
+  CacheHit = 0,
+  DirtyRebuild = 1,
+  GeometryReset = 2,
+};
+
+struct DecisionMapChunkDebugCell
+{
+  int chunk_x{0};
+  int chunk_y{0};
+  DecisionMapChunkDebugState state{DecisionMapChunkDebugState::CacheHit};
+};
+
 // Full analysis result for one observer tick. Marker publishers consume this
 // snapshot directly, keeping visualization formatting separate from scoring.
 struct FrontierDebugSnapshot
@@ -97,6 +113,13 @@ struct FrontierDebugSnapshot
   std::vector<std::size_t> dp_pruned_indices;
   std::vector<std::size_t> dp_order;
   std::vector<std::size_t> active_order;
+  std::vector<DecisionMapChunkDebugCell> decision_map_chunks;
+  std::size_t decision_map_total_chunks{0};
+  std::size_t decision_map_dirty_chunks{0};
+  bool decision_map_geometry_changed{false};
+  bool decision_map_config_changed{false};
+  bool decision_map_output_reused{false};
+  bool decision_map_output_changed{false};
   nav_msgs::msg::OccupancyGrid decision_map_msg;
   std::string active_selection_mode;
 };
@@ -109,6 +132,7 @@ FrontierDebugSnapshot analyze_frontier_debug_snapshot(
   const OccupancyGrid2d & map,
   const OccupancyGrid2d & costmap,
   const std::optional<OccupancyGrid2d> & local_costmap,
-  const DebugAnalyzerConfig & config);
+  const DebugAnalyzerConfig & config,
+  DecisionMapWorkspace & decision_map_workspace);
 
 }  // namespace frontier_exploration_ros2::debug

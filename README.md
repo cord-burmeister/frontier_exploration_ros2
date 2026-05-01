@@ -608,10 +608,19 @@ ros2 launch frontier_exploration_ros2 frontier_debug.launch.py \
 | `explore/debug/mrtsp_order`         | Greedy or DP MRTSP sequence shown as a route overlay                     |
 | `explore/debug/dp_pruning`          | DP candidate pool, prune rank, DP order rank, and pruning score          |
 | `explore/debug/decision_map`        | Occupancy grid used for optimized frontier extraction                    |
+| `explore/debug/chunk_cache`         | Chunk-cache borders for decision-map raw diff validation                 |
 
 ### RViz Topic Setup
 
 Add the debug topics as `MarkerArray` displays, and add `explore/debug/decision_map` as a `Map` display. Keep the fixed frame aligned with the configured `global_frame`, usually `map`.
+
+The chunk-cache overlay uses these colors:
+
+- green border: raw chunk cache hit, chunk stayed unchanged
+- red border: chunk was rebuilt because the incoming raw map changed there
+- yellow border: full geometry reset/full rebuild, for example after map growth or origin shift
+
+The overlay also publishes a small text summary with chunk hit/dirty/reset counts and whether the optimized output was reused.
 
 You can check that the observer is publishing with:
 

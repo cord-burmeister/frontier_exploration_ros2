@@ -106,6 +106,29 @@ visualization_msgs::msg::Marker point_marker(
   return marker;
 }
 
+void append_rectangle_outline(
+  visualization_msgs::msg::Marker & marker,
+  double x_min,
+  double y_min,
+  double x_max,
+  double y_max,
+  double z)
+{
+  const auto bottom_left = point(x_min, y_min, z);
+  const auto bottom_right = point(x_max, y_min, z);
+  const auto top_right = point(x_max, y_max, z);
+  const auto top_left = point(x_min, y_max, z);
+
+  marker.points.push_back(bottom_left);
+  marker.points.push_back(bottom_right);
+  marker.points.push_back(bottom_right);
+  marker.points.push_back(top_right);
+  marker.points.push_back(top_right);
+  marker.points.push_back(top_left);
+  marker.points.push_back(top_left);
+  marker.points.push_back(bottom_left);
+}
+
 visualization_msgs::msg::Marker sphere_marker(
   const DebugMarkerConfig & config,
   const std::string & ns,
@@ -537,6 +560,114 @@ visualization_msgs::msg::MarkerArray make_dp_pruning_markers(
     label_text.scale.z = config.text_scale * 1.25;
     markers.markers.push_back(label_text);
   }
+  return markers;
+}
+
+visualization_msgs::msg::MarkerArray make_decision_map_chunk_cache_markers(
+  const FrontierDebugSnapshot & snapshot,
+  const DebugMarkerConfig & config)
+{
+  visualization_msgs::msg::MarkerArray markers;
+  markers.markers.push_back(clear_marker(config));
+
+  if (
+    snapshot.decision_map_msg.info.width == 0U ||
+    snapshot.decision_map_msg.info.height == 0U ||
+    snapshot.decision_map_chunks.empty())
+  {
+    return markers;
+  }
+
+  const double resolution = snapshot.decision_map_msg.info.resolution;
+  const double origin_x = snapshot.decision_map_msg.info.origin.position.x;
+  const double origin_y = snapshot.decision_map_msg.info.origin.position.y;
+  const int width = static_cast<int>(snapshot.decision_map_msg.info.width);
+  const int height = static_cast<int>(snapshot.decision_map_msg.info.height);
+  constexpr int kChunkSizeCells = 32;
+
+  auto hit_borders = line_list_marker(
+    config,
+    "debug_chunk_cache_hit",
+    0,
+    rgba(0.12F, 0.82F, 0.25F, 0.9F),
+    config.line_width * 0.55);
+  auto dirty_borders = line_list_marker(
+    config,
+    "debug_chunk_cache_dirty",
+    1,
+    rgba(0.95F, 0.12F, 0.12F, 0.95F),
+    config.line_width * 0.75);
+  auto reset_borders = line_list_marker(
+    config,
+    "debug_chunk_cache_reset",
+    2,
+    rgba(1.0F, 0.85F, 0.15F, 0.95F),
+    config.line_width * 0.75);
+
+  std::size_t hit_count = 0;
+  std::size_t dirty_count = 0;
+  std::size_t reset_count = 0;
+  for (const auto & chunk : snapshot.decision_map_chunks) {
+    const int cell_x_min = chunk.chunk_x * kChunkSizeCells;
+    const int cell_y_min = chunk.chunk_y * kChunkSizeCells;
+    const int cell_x_max = std::min(width, cell_x_min + kChunkSizeCells);
+    const int cell_y_max = std::min(height, cell_y_min + kChunkSizeCells);
+
+    const double x_min = origin_x + (static_cast<double>(cell_x_min) * resolution);
+    const double y_min = origin_y + (static_cast<double>(cell_y_min) * resolution);
+    const double x_max = origin_x + (static_cast<double>(cell_x_max) * resolution);
+    const double y_max = origin_y + (static_cast<double>(cell_y_max) * resolution);
+
+    switch (chunk.state) {
+      case DecisionMapChunkDebugState::CacheHit:
+        append_rectangle_outline(hit_borders, x_min, y_min, x_max, y_max, config.z_offset + 0.02);
+        hit_count += 1U;
+        break;
+      case DecisionMapChunkDebugState::DirtyRebuild:
+        append_rectangle_outline(dirty_borders, x_min, y_min, x_max, y_max, config.z_offset + 0.03);
+        dirty_count += 1U;
+        break;
+      case DecisionMapChunkDebugState::GeometryReset:
+        append_rectangle_outline(reset_borders, x_min, y_min, x_max, y_max, config.z_offset + 0.04);
+        reset_count += 1U;
+        break;
+    }
+  }
+
+  if (!hit_borders.points.empty()) {
+    markers.markers.push_back(hit_borders);
+  }
+  if (!dirty_borders.points.empty()) {
+    markers.markers.push_back(dirty_borders);
+  }
+  if (!reset_borders.points.empty()) {
+    markers.markers.push_back(reset_borders);
+  }
+
+  std::ostringstream summary;
+  summary << "chunk cache"
+          << "\nhit=" << hit_count
+          << " dirty=" << dirty_count
+          << " reset=" << reset_count
+          << "\noutput=" << (snapshot.decision_map_output_reused ? "hit" : "miss")
+          << " changed=" << (snapshot.decision_map_output_changed ? "yes" : "no");
+  if (snapshot.decision_map_geometry_changed) {
+    summary << "\ngeometry_reset=yes";
+  } else if (snapshot.decision_map_config_changed) {
+    summary << "\nconfig_rebuild=yes";
+  }
+
+  const double map_top_y = origin_y + (static_cast<double>(height) * resolution);
+  auto summary_marker = text_marker(
+    config,
+    "debug_chunk_cache_summary",
+    3,
+    point(origin_x + (resolution * 0.5), map_top_y + (resolution * 0.5), config.z_offset + 0.08),
+    rgba(0.05F, 0.05F, 0.05F, 1.0F),
+    summary.str());
+  summary_marker.scale.z = config.text_scale * 1.1;
+  markers.markers.push_back(summary_marker);
+
   return markers;
 }
 
