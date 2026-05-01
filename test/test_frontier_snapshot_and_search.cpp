@@ -318,6 +318,42 @@ TEST(FrontierSearchTests, VisibleRevealGainRespectsYawAndFov)
   EXPECT_EQ(north_gain->visible_reveal_cell_count, 0);
 }
 
+TEST(FrontierSearchTests, VisibleRevealGainStopsAtVirtualClusterBounds)
+{
+  auto map_msg = build_grid(12, 12, -1);
+  for (int x = 2; x <= 4; ++x) {
+    set_cells(map_msg, {{x, 6}}, 0);
+  }
+
+  auto costmap_msg = build_grid(12, 12, 0);
+  const OccupancyGrid2d occupancy_map(map_msg);
+  const OccupancyGrid2d costmap(costmap_msg);
+
+  const auto unclipped_gain = compute_visible_reveal_gain(
+    make_pose(3.0, 6.0, 0.0),
+    occupancy_map,
+    costmap,
+    std::nullopt,
+    6.0,
+    1.0,
+    1.0);
+  const auto clipped_gain = compute_visible_reveal_gain(
+    make_pose(3.0, 6.0, 0.0),
+    occupancy_map,
+    costmap,
+    std::nullopt,
+    6.0,
+    1.0,
+    1.0,
+    FrontierCandidate::CellBounds{2, 6, 4, 6});
+
+  ASSERT_TRUE(unclipped_gain.has_value());
+  ASSERT_TRUE(clipped_gain.has_value());
+  EXPECT_GT(unclipped_gain->visible_reveal_cell_count, 0);
+  EXPECT_EQ(clipped_gain->visible_reveal_cell_count, 0);
+  EXPECT_DOUBLE_EQ(clipped_gain->visible_reveal_length_m, 0.0);
+}
+
 TEST(FrontierSearchTests, ExplorationCompleteCallbackRunsWhenNoFrontiersRemain)
 {
   auto core = make_snapshot_core();

@@ -616,6 +616,54 @@ TEST(PreemptionFlowTests, VisibleGainGateSkipsSnapshotSearchWhenGoalStillHasVisi
   EXPECT_TRUE(core->pending_frontier_sequence.empty());
 }
 
+TEST(PreemptionFlowTests, VisibleGainGateSkipsSmallClusterEvenBelowMinRevealThreshold)
+{
+  auto core = make_preemption_core();
+  auto fake_handle = std::make_shared<FakeGoalHandle>();
+  core->goal_handle = fake_handle;
+  core->params.goal_preemption_enabled = true;
+  core->params.goal_preemption_lidar_range_m = 6.0;
+  core->params.goal_preemption_lidar_fov_deg = 90.0;
+  core->params.goal_preemption_lidar_ray_step_deg = 1.0;
+  core->params.goal_preemption_lidar_min_reveal_length_m = 2.0;
+  core->active_goal_frontier = FrontierCandidate{{4.0, 5.0}, {3.0, 5.0}, 1};
+  core->active_goal_frontiers = {*core->active_goal_frontier};
+
+  auto map_msg = build_grid(12, 12, -1);
+  for (int x = 0; x <= 4; ++x) {
+    set_cell(map_msg, x, 5, 0);
+  }
+  core->map = OccupancyGrid2d(map_msg);
+
+  int frontier_search_calls = 0;
+  int dispatch_calls = 0;
+  core->callbacks.wait_for_action_server = [](double) {return true;};
+  core->callbacks.dispatch_goal_request = [&dispatch_calls](const GoalDispatchRequest &) {
+      dispatch_calls += 1;
+    };
+  core->callbacks.frontier_search = [&frontier_search_calls](
+    const geometry_msgs::msg::Pose &,
+    const OccupancyGrid2d &,
+    const OccupancyGrid2d &,
+    const std::optional<OccupancyGrid2d> &,
+    double,
+    bool)
+    {
+      frontier_search_calls += 1;
+      FrontierSearchResult result;
+      result.frontiers = {FrontierCandidate{{8.0, 8.0}, {8.0, 8.0}, 8}};
+      result.robot_map_cell = {0, 0};
+      return result;
+    };
+
+  core->consider_preempt_active_goal("map");
+
+  EXPECT_EQ(frontier_search_calls, 0);
+  EXPECT_EQ(dispatch_calls, 0);
+  EXPECT_EQ(fake_handle->cancel_calls, 0);
+  EXPECT_TRUE(core->pending_frontier_sequence.empty());
+}
+
 TEST(PreemptionFlowTests, VisibleGainGateFallsBackToSnapshotReselectionWhenGoalGainIsExhausted)
 {
   auto core = make_preemption_core();

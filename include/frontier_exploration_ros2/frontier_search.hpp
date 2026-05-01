@@ -219,6 +219,7 @@ std::optional<VisibleRevealGain> compute_visible_reveal_gain(
   const std::optional<OccupancyGrid2d> & local_costmap,
   double range_m,
   double fov_deg,
-  double ray_step_deg);
+  double ray_step_deg,
+  const std::optional<FrontierCandidate::CellBounds> & visible_reveal_bounds = std::nullopt);
 
 }  // namespace frontier_exploration_ros2

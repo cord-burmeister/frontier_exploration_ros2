@@ -284,6 +284,17 @@ std::optional<double> FrontierExplorerCore::active_goal_visible_reveal_length() 
   sensor_pose.orientation = detail::quaternion_from_yaw(heading + yaw_offset_rad);
 
   // The helper returns a local, occlusion-aware reveal length estimate around the target pose.
+  const auto visible_reveal_bounds =
+    std::visit(
+    [](const auto & frontier) -> std::optional<FrontierCandidate::CellBounds> {
+      using FrontierT = std::decay_t<decltype(frontier)>;
+      if constexpr (std::is_same_v<FrontierT, FrontierCandidate>) {
+        return frontier.visible_reveal_bounds;
+      }
+      return std::nullopt;
+    },
+    *active_goal_frontier);
+
   const auto visible_gain = compute_visible_reveal_gain(
     sensor_pose,
     *map,
@@ -291,7 +302,8 @@ std::optional<double> FrontierExplorerCore::active_goal_visible_reveal_length() 
     local_costmap,
     params.goal_preemption_lidar_range_m,
     params.goal_preemption_lidar_fov_deg,
-    params.goal_preemption_lidar_ray_step_deg);
+    params.goal_preemption_lidar_ray_step_deg,
+    visible_reveal_bounds);
   if (!visible_gain.has_value()) {
     return std::nullopt;
   }
@@ -441,6 +453,15 @@ void FrontierExplorerCore::consider_preempt_active_goal(const std::string & trig
     if (!visible_reveal_length.has_value()) {
       callbacks.log_warn(
         "Skipping visible reveal gain gate for the active goal; falling back to frontier snapshot reselection");
+    } else if (
+      map.has_value() &&
+      static_cast<double>(frontier_size(*active_goal_frontier)) * map->map().info.resolution <=
+      *visible_reveal_length)
+    {
+      // Small frontier clusters can look fully revealable even with low absolute gain thresholds.
+      // If the current visible reveal already covers the whole cluster-size proxy, skip preemption.
+      reset_replacement_candidate_tracking();
+      return;
     } else if (*visible_reveal_length >= params.goal_preemption_lidar_min_reveal_length_m) {
       // Keep current goal while target pose can still reveal enough unexplored boundary on arrival.
       reset_replacement_candidate_tracking();

@@ -407,6 +407,23 @@ std::optional<FrontierCandidate> build_frontier_candidate(
     centroid_sum_y / static_cast<double>(new_frontier.size()),
   };
 
+  int min_frontier_x = new_frontier.front()->mapX;
+  int max_frontier_x = new_frontier.front()->mapX;
+  int min_frontier_y = new_frontier.front()->mapY;
+  int max_frontier_y = new_frontier.front()->mapY;
+  for (auto * frontier_point : new_frontier) {
+    min_frontier_x = std::min(min_frontier_x, frontier_point->mapX);
+    max_frontier_x = std::max(max_frontier_x, frontier_point->mapX);
+    min_frontier_y = std::min(min_frontier_y, frontier_point->mapY);
+    max_frontier_y = std::max(max_frontier_y, frontier_point->mapY);
+  }
+  const FrontierCandidate::CellBounds visible_reveal_bounds{
+    std::max(0, min_frontier_x - 1),
+    std::max(0, min_frontier_y - 1),
+    std::min(occupancy_map.getSizeX() - 1, max_frontier_x + 1),
+    std::min(occupancy_map.getSizeY() - 1, max_frontier_y + 1),
+  };
+
   std::pair<int, int> center_cell = {new_frontier.front()->mapX, new_frontier.front()->mapY};
   std::pair<double, double> center_point = frontier_world_points.front();
   double center_distance_sq = std::numeric_limits<double>::infinity();
@@ -454,6 +471,7 @@ std::optional<FrontierCandidate> build_frontier_candidate(
       start_world_point,
       std::nullopt,
       static_cast<int>(new_frontier.size()),
+      visible_reveal_bounds,
     };
   }
 
@@ -524,6 +542,7 @@ std::optional<FrontierCandidate> build_frontier_candidate(
     start_world_point,
     *goal_point,
     static_cast<int>(new_frontier.size()),
+    visible_reveal_bounds,
   };
 }
 
@@ -803,7 +822,8 @@ std::optional<VisibleRevealGain> compute_visible_reveal_gain(
   const std::optional<OccupancyGrid2d> & local_costmap,
   double range_m,
   double fov_deg,
-  double ray_step_deg)
+  double ray_step_deg,
+  const std::optional<FrontierCandidate::CellBounds> & visible_reveal_bounds)
 {
   // Invalid geometry means the caller should skip this optimization and keep the fallback path.
   if (range_m < 0.1 || fov_deg < 1.0 || fov_deg > 360.0 || ray_step_deg < 0.25 || ray_step_deg > 45.0) {
@@ -857,6 +877,15 @@ std::optional<VisibleRevealGain> compute_visible_reveal_gain(
       int map_y = 0;
       if (!occupancy_map.worldToMapNoThrow(sample_x, sample_y, map_x, map_y)) {
         // Leaving the map bounds is equivalent to exhausting that ray.
+        break;
+      }
+      if (visible_reveal_bounds.has_value() &&
+        (map_x < visible_reveal_bounds->min_x ||
+        map_x > visible_reveal_bounds->max_x ||
+        map_y < visible_reveal_bounds->min_y ||
+        map_y > visible_reveal_bounds->max_y))
+      {
+        // Treat the local frontier-cluster bounds as a virtual wall for visible-gain estimation.
         break;
       }
 

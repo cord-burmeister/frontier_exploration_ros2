@@ -266,6 +266,14 @@ private:
 // Frontier output used by policy and goal dispatch.
 struct FrontierCandidate
 {
+  struct CellBounds
+  {
+    int min_x{0};
+    int min_y{0};
+    int max_x{0};
+    int max_y{0};
+  };
+
   FrontierCandidate() = default;
 
   // Compatibility constructor for existing nearest-style tests and simple callers.
@@ -288,14 +296,16 @@ struct FrontierCandidate
     std::pair<int, int> start_cell_in,
     std::pair<double, double> start_world_point_in,
     std::optional<std::pair<double, double>> goal_point_in,
-    int size_in)
+    int size_in,
+    std::optional<CellBounds> visible_reveal_bounds_in = std::nullopt)
   : centroid(std::move(centroid_in)),
     center_point(std::move(center_point_in)),
     center_cell(std::move(center_cell_in)),
     start_cell(std::move(start_cell_in)),
     start_world_point(std::move(start_world_point_in)),
     goal_point(std::move(goal_point_in)),
-    size(size_in)
+    size(size_in),
+    visible_reveal_bounds(std::move(visible_reveal_bounds_in))
   {
   }
 
@@ -313,6 +323,8 @@ struct FrontierCandidate
   std::optional<std::pair<double, double>> goal_point;
   // Number of cells in the underlying frontier cluster.
   int size{0};
+  // Conservative local bounds used to limit target-pose visible-reveal estimation around this cluster.
+  std::optional<CellBounds> visible_reveal_bounds;
 };
 
 enum class FrontierStrategy
