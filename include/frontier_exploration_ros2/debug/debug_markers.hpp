@@ -53,11 +53,6 @@ visualization_msgs::msg::MarkerArray make_optimized_frontier_markers(
   const FrontierDebugSnapshot & snapshot,
   const DebugMarkerConfig & config);
 
-// Nearest strategy explanation: candidate pool, rank, mode, and distances.
-visualization_msgs::msg::MarkerArray make_nearest_score_markers(
-  const FrontierDebugSnapshot & snapshot,
-  const DebugMarkerConfig & config);
-
 // MRTSP start-row score explanation: rank, gain, path cost, and time cost.
 visualization_msgs::msg::MarkerArray make_mrtsp_score_markers(
   const FrontierDebugSnapshot & snapshot,

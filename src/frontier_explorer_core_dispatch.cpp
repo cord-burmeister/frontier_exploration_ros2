@@ -70,10 +70,11 @@ void FrontierExplorerCore::try_send_next_goal()
   }
 
   FrontierSnapshot snapshot;
+  const double min_goal_distance = frontier_snapshot_min_goal_distance_for_pose(*current_pose);
   try {
     snapshot = get_frontier_snapshot(
       *current_pose,
-      frontier_snapshot_min_goal_distance_for_pose(*current_pose));
+      min_goal_distance);
   } catch (const std::out_of_range & exc) {
     callbacks.log_warn(std::string("Skipping frontier update: ") + exc.what());
     return;
@@ -81,6 +82,7 @@ void FrontierExplorerCore::try_send_next_goal()
 
   const FrontierSequence & frontiers = snapshot.frontiers;
   FrontierSequence filtered_frontiers = filter_frontiers_for_suppression(frontiers);
+  bool escape_mode_active = false;
   if (filtered_frontiers.empty() && !frontiers.empty()) {
     no_frontiers_reported = false;
     no_reachable_frontier_reported = false;
@@ -91,6 +93,38 @@ void FrontierExplorerCore::try_send_next_goal()
     }
     handle_all_frontiers_suppressed(*current_pose);
     return;
+  }
+
+  if (filtered_frontiers.empty() && frontiers.empty() && params.escape_enabled && min_goal_distance > 0.0) {
+    FrontierSnapshot escape_snapshot;
+    try {
+      escape_snapshot = get_frontier_snapshot(*current_pose, 0.0);
+    } catch (const std::out_of_range & exc) {
+      callbacks.log_warn(std::string("Skipping escape-mode frontier update: ") + exc.what());
+      return;
+    }
+
+    FrontierSequence escape_filtered_frontiers = filter_frontiers_for_suppression(escape_snapshot.frontiers);
+    if (escape_filtered_frontiers.empty() && !escape_snapshot.frontiers.empty()) {
+      no_frontiers_reported = false;
+      no_reachable_frontier_reported = false;
+      publish_frontier_markers(escape_filtered_frontiers);
+      if (!all_frontiers_suppressed_reported) {
+        callbacks.log_info("All currently detected frontiers are temporarily suppressed");
+        all_frontiers_suppressed_reported = true;
+      }
+      handle_all_frontiers_suppressed(*current_pose);
+      return;
+    }
+
+    if (!escape_filtered_frontiers.empty()) {
+      filtered_frontiers = std::move(escape_filtered_frontiers);
+      escape_mode_active = true;
+      callbacks.log_info(
+        "No frontier survived the active minimum-distance filters (min_goal_distance=" +
+        detail::format_meters(min_goal_distance) +
+        "); retrying in escape mode with min-distance search and dispatch bypassed");
+    }
   }
 
   all_frontiers_suppressed_reported = false;
@@ -110,7 +144,10 @@ void FrontierExplorerCore::try_send_next_goal()
   }
 
   no_frontiers_reported = false;
-  const auto selection = select_frontier(filtered_frontiers, *current_pose);
+  auto selection = select_frontier(filtered_frontiers, *current_pose);
+  if (escape_mode_active && selection.frontier.has_value()) {
+    selection.mode = "escape";
+  }
   publish_frontier_markers(filtered_frontiers);
 
   if (!selection.frontier.has_value()) {
@@ -134,7 +171,8 @@ void FrontierExplorerCore::try_send_next_goal()
   send_frontier_goal(
     frontier_sequence,
     *current_pose,
-    "Sending frontier goal (" + selection.mode + "): " + describe_frontier(frontier_sequence.front()));
+    "Sending frontier goal (" + selection.mode + "): " + describe_frontier(frontier_sequence.front()),
+    escape_mode_active);
 }
 
 void FrontierExplorerCore::reset_exploration_runtime_state(bool clear_maps)
@@ -145,7 +183,6 @@ void FrontierExplorerCore::reset_exploration_runtime_state(bool clear_maps)
   no_frontiers_reported = false;
   no_reachable_frontier_reported = false;
   all_frontiers_suppressed_reported = false;
-  escape_active = params.escape_enabled;
   return_to_start_started = false;
   return_to_start_completed = false;
   suppressed_return_to_start_started = false;
@@ -285,15 +322,7 @@ std::optional<double> FrontierExplorerCore::active_goal_visible_reveal_length() 
 
   // The helper returns a local, occlusion-aware reveal length estimate around the target pose.
   const auto visible_reveal_bounds =
-    std::visit(
-    [](const auto & frontier) -> std::optional<FrontierCandidate::CellBounds> {
-      using FrontierT = std::decay_t<decltype(frontier)>;
-      if constexpr (std::is_same_v<FrontierT, FrontierCandidate>) {
-        return frontier.visible_reveal_bounds;
-      }
-      return std::nullopt;
-    },
-    *active_goal_frontier);
+    active_goal_frontier->visible_reveal_bounds;
 
   const auto visible_gain = compute_visible_reveal_gain(
     sensor_pose,
@@ -690,7 +719,7 @@ bool FrontierExplorerCore::dispatch_pending_frontier_goal(
 
   const FrontierSequence frontier_sequence = pending_frontier_sequence;
   const std::string selection_mode = pending_frontier_selection_mode.empty() ?
-    "preferred" : pending_frontier_selection_mode;
+    "mrtsp" : pending_frontier_selection_mode;
 
   const bool dispatched = send_frontier_goal(
     frontier_sequence,
@@ -794,7 +823,8 @@ bool FrontierExplorerCore::send_pose_goal(
 bool FrontierExplorerCore::send_frontier_goal(
   const FrontierSequence & frontier_sequence,
   const geometry_msgs::msg::Pose & current_pose,
-  const std::string & description)
+  const std::string & description,
+  bool bypass_min_distance_dispatch)
 {
   if (frontier_sequence.empty()) {
     return false;
@@ -831,7 +861,8 @@ bool FrontierExplorerCore::send_frontier_goal(
 
   const auto goal_pose = build_dispatch_goal_pose(
     dispatch_sequence.front(),
-    current_pose);
+    current_pose,
+    bypass_min_distance_dispatch);
   if (debug_outputs_enabled()) {
     callbacks.publish_selected_frontier_pose(goal_pose);
   }
@@ -1008,16 +1039,7 @@ void FrontierExplorerCore::get_result_callback(
     {
       callbacks.log_info("Reached start pose while frontiers remain temporarily suppressed");
     } else if (status == action_msgs::msg::GoalStatus::STATUS_SUCCEEDED) {
-      if (goal_kind == "frontier" && escape_active) {
-        escape_active = false;
-        callbacks.log_info("Escape mode disabled after the first successful frontier");
-      }
-
-      if (frontier_sequence.size() > 1) {
-        callbacks.log_info("Frontier goal reached with look-ahead orientation");
-      } else {
-        callbacks.log_info("Frontier goal reached");
-      }
+      callbacks.log_info("Frontier goal reached");
     } else if (status == action_msgs::msg::GoalStatus::STATUS_CANCELED) {
       // Expected during explicit preemption/cancel paths.
       callbacks.log_debug(goal_kind + " was canceled before completion");

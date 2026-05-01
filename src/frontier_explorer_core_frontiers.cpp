@@ -63,28 +63,12 @@ FrontierSequence FrontierExplorerCore::build_mrtsp_frontier_sequence(
     const_cast<FrontierExplorerCore *>(this)->mrtsp_order_cache_hits += 1;
     if (debug_outputs_enabled()) {
       callbacks.log_debug(
-        "mrtsp_order_cache: hit, frontiers=" + std::to_string(frontiers.size()) +
-        ", strategy=" + detail::strategy_to_string(params.strategy));
+        "mrtsp_order_cache: hit, frontiers=" + std::to_string(frontiers.size()));
     }
     return mrtsp_order_cache->frontier_sequence;
   }
 
-  std::vector<FrontierCandidate> candidates;
-  std::vector<std::size_t> candidate_frontier_indices;
-  candidates.reserve(frontiers.size());
-  candidate_frontier_indices.reserve(frontiers.size());
-  // MRTSP operates on FrontierCandidate data; keep the original FrontierSequence index
-  // beside each candidate so solver output can be mapped back to dispatch-ready variants.
-  for (std::size_t frontier_index = 0; frontier_index < frontiers.size(); ++frontier_index) {
-    if (const auto * candidate = std::get_if<FrontierCandidate>(&frontiers[frontier_index])) {
-      candidates.push_back(*candidate);
-      candidate_frontier_indices.push_back(frontier_index);
-    }
-  }
-
-  if (candidates.empty()) {
-    return {};
-  }
+  const std::vector<FrontierCandidate> & candidates = frontiers;
 
   RobotState robot_state;
   robot_state.position = {current_pose.position.x, current_pose.position.y};
@@ -160,14 +144,9 @@ FrontierSequence FrontierExplorerCore::build_mrtsp_frontier_sequence(
 
   FrontierSequence ordered_frontiers;
   ordered_frontiers.reserve(order.size());
-  // Convert candidate indices back to the original frontier sequence so goal dispatch,
-  // equivalence checks, and marker publication continue to use the same frontier objects.
   for (const std::size_t index : order) {
-    if (index < candidate_frontier_indices.size()) {
-      const std::size_t frontier_index = candidate_frontier_indices[index];
-      if (frontier_index < frontiers.size()) {
-        ordered_frontiers.push_back(frontiers[frontier_index]);
-      }
+    if (index < frontiers.size()) {
+      ordered_frontiers.push_back(frontiers[index]);
     }
   }
 
@@ -237,8 +216,7 @@ bool FrontierExplorerCore::frontier_snapshot_matches(
     snapshot->costmap_generation == costmap_generation &&
     snapshot->local_costmap_generation == local_costmap_generation &&
     snapshot->robot_map_cell == robot_map_cell &&
-    snapshot->min_goal_distance == min_goal_distance &&
-    snapshot->strategy == params.strategy);
+    snapshot->min_goal_distance == min_goal_distance);
 }
 
 void FrontierExplorerCore::throttled_debug(const std::string & message)
@@ -311,7 +289,6 @@ FrontierSnapshot FrontierExplorerCore::get_frontier_snapshot(
   snapshot.local_costmap_generation = local_costmap_generation;
   snapshot.robot_map_cell = search_result.robot_map_cell;
   snapshot.min_goal_distance = min_goal_distance;
-  snapshot.strategy = params.strategy;
 
   frontier_snapshot = snapshot;
   frontier_snapshot_cache_misses += 1;
@@ -326,16 +303,9 @@ FrontierSnapshot FrontierExplorerCore::get_frontier_snapshot(
         raw_frontier_debug_cache->local_costmap_generation == local_costmap_generation &&
         raw_frontier_debug_cache->robot_map_cell == search_result.robot_map_cell &&
         raw_frontier_debug_cache->min_goal_distance == min_goal_distance &&
-        raw_frontier_debug_cache->strategy == params.strategy &&
         raw_frontier_debug_cache->search_options.occ_threshold == options.occ_threshold &&
         raw_frontier_debug_cache->search_options.min_frontier_size_cells == options.min_frontier_size_cells &&
-        raw_frontier_debug_cache->search_options.candidate_min_goal_distance_m == options.candidate_min_goal_distance_m &&
-        raw_frontier_debug_cache->search_options.use_local_costmap_for_frontier_eligibility ==
-        options.use_local_costmap_for_frontier_eligibility &&
-        raw_frontier_debug_cache->search_options.out_of_bounds_costmap_is_blocked ==
-        options.out_of_bounds_costmap_is_blocked &&
-        raw_frontier_debug_cache->search_options.build_navigation_goal_point ==
-        options.build_navigation_goal_point)
+        raw_frontier_debug_cache->search_options.candidate_min_goal_distance_m == options.candidate_min_goal_distance_m)
       {
         raw_frontier_count = raw_frontier_debug_cache->frontier_count;
       } else {
@@ -354,7 +324,6 @@ FrontierSnapshot FrontierExplorerCore::get_frontier_snapshot(
           local_costmap_generation,
           raw_search_result.robot_map_cell,
           min_goal_distance,
-          params.strategy,
           options,
           raw_frontier_count,
         };
@@ -362,8 +331,7 @@ FrontierSnapshot FrontierExplorerCore::get_frontier_snapshot(
     }
     callbacks.log_debug(
       "frontier_counts: raw=" + std::to_string(raw_frontier_count) +
-      ", decision=" + std::to_string(snapshot.frontiers.size()) +
-      ", strategy=" + detail::strategy_to_string(params.strategy));
+      ", decision=" + std::to_string(snapshot.frontiers.size()));
   }
   log_frontier_snapshot_stats(snapshot.frontiers, duration_ms, false);
   return snapshot;
@@ -489,30 +457,15 @@ bool FrontierExplorerCore::post_goal_settle_ready() const
   return true;
 }
 
-FrontierSelectionResult FrontierExplorerCore::select_primitive_frontier(
-  const FrontierSequence & frontiers,
-  const geometry_msgs::msg::Pose & current_pose) const
-{
-  return frontier_exploration_ros2::select_primitive_frontier(
-    frontiers,
-    current_pose,
-    params.frontier_selection_min_distance,
-    params.frontier_visit_tolerance,
-    escape_active);
-}
-
 FrontierSelectionResult FrontierExplorerCore::select_frontier(
   const FrontierSequence & frontiers,
   const geometry_msgs::msg::Pose & current_pose) const
 {
-  if (mrtsp_enabled()) {
-    const FrontierSequence ordered_frontiers = build_mrtsp_frontier_sequence(frontiers, current_pose);
-    if (ordered_frontiers.empty()) {
-      return {std::nullopt, ""};
-    }
-    return {ordered_frontiers.front(), "mrtsp"};
+  const FrontierSequence ordered_frontiers = build_mrtsp_frontier_sequence(frontiers, current_pose);
+  if (ordered_frontiers.empty()) {
+    return {std::nullopt, ""};
   }
-  return select_primitive_frontier(frontiers, current_pose);
+  return {ordered_frontiers.front(), "mrtsp"};
 }
 
 void FrontierExplorerCore::record_start_pose(const geometry_msgs::msg::Pose & current_pose)
@@ -612,7 +565,8 @@ geometry_msgs::msg::PoseStamped FrontierExplorerCore::build_goal_pose(
 
 geometry_msgs::msg::PoseStamped FrontierExplorerCore::build_dispatch_goal_pose(
   const FrontierLike & target_frontier,
-  const geometry_msgs::msg::Pose & current_pose) const
+  const geometry_msgs::msg::Pose & current_pose,
+  bool bypass_min_distance_dispatch) const
 {
   const auto goal_pose_for_point =
     [this, &current_pose](const std::pair<double, double> & target_point) {
@@ -630,7 +584,10 @@ geometry_msgs::msg::PoseStamped FrontierExplorerCore::build_dispatch_goal_pose(
     };
 
   const auto fallback_goal_pose = build_goal_pose(target_frontier, current_pose);
-  if (!mrtsp_enabled() || params.frontier_selection_min_distance <= 0.0 || !map.has_value()) {
+  if (bypass_min_distance_dispatch ||
+    params.frontier_selection_min_distance <= 0.0 ||
+    !map.has_value())
+  {
     return fallback_goal_pose;
   }
 
@@ -734,41 +691,8 @@ FrontierSequence FrontierExplorerCore::select_frontier_sequence(
   const geometry_msgs::msg::Pose & current_pose,
   const std::optional<FrontierLike> & initial_frontier) const
 {
-  if (mrtsp_enabled()) {
-    (void)initial_frontier;
-    return build_mrtsp_frontier_sequence(frontiers, current_pose);
-  }
-
-  if (!initial_frontier.has_value()) {
-    return {};
-  }
-
-  FrontierSequence frontier_sequence{*initial_frontier};
-  FrontierSequence remaining_frontiers;
-  remaining_frontiers.reserve(frontiers.size());
-  for (const auto & frontier : frontiers) {
-    if (!are_frontiers_equivalent(initial_frontier, frontier)) {
-      remaining_frontiers.push_back(frontier);
-    }
-  }
-
-  if (remaining_frontiers.empty()) {
-    return frontier_sequence;
-  }
-
-  // Re-score the remaining frontiers as if the robot had already reached the current target.
-  geometry_msgs::msg::Pose look_ahead_pose = current_pose;
-  const auto [target_x, target_y] = frontier_position(*initial_frontier);
-  look_ahead_pose.position.x = target_x;
-  look_ahead_pose.position.y = target_y;
-
-  const auto next_selection = select_frontier(remaining_frontiers, look_ahead_pose);
-  if (next_selection.frontier.has_value()) {
-    // The second entry is only a heading hint for the first dispatched frontier goal.
-    frontier_sequence.push_back(*next_selection.frontier);
-  }
-
-  return frontier_sequence;
+  (void)initial_frontier;
+  return build_mrtsp_frontier_sequence(frontiers, current_pose);
 }
 
 bool FrontierExplorerCore::are_frontier_sequences_equivalent(

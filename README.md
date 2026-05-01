@@ -67,11 +67,10 @@ Explorer does exploration.
 
 ## Overview
 
-This package solves autonomous frontier exploration for occupancy-grid-based mobile robots. It detects frontiers on the boundary between known free space and unknown space, can optimize the decision map before WFD runs, selects an exploration target with either a nearest-frontier policy or an MRTSP-based ordering policy, and continues until frontier exhaustion. In the default ROS 2 integration, those targets are dispatched through Nav2.
+This package solves autonomous frontier exploration for occupancy-grid-based mobile robots. It detects frontiers on the boundary between known free space and unknown space, can optimize the decision map before WFD runs, selects and orders exploration targets with an MRTSP-based policy, and continues until frontier exhaustion. In the default ROS 2 integration, those targets are dispatched through Nav2.
 
 The implementation keeps the WFD-style frontier extraction backbone and extends it with decision-map optimization before frontier extraction, MRTSP-based ordering that uses the **Minimum Ratio Traveling Salesman Problem (MRTSP)** idea, and runtime controls that are useful in production deployments:
 
-- `nearest` and `mrtsp` frontier exploration strategies
 - MRTSP solver modes: **greedy matrix traversal** or **bounded-horizon Dynamic Programming**
 - pre-WFD decision-map optimization with bilateral filtering and dilation
 - global and local costmap filtering during frontier validation and goal selection
@@ -187,7 +186,7 @@ Docker support is included for easier setup and reproducible testing.
 
 - Provide a C++ exploration package that is fast, predictable, and easy to integrate into real robotics systems, with a verified ROS 2 Jazzy path.
 - Keep WFD-style frontier extraction while improving frontier quality and exploration ordering through pre-WFD map optimization and MRTSP-based selection.
-- Support both local nearest selection and MRTSP-style global ordering from the same public interface.
+- Use a single MRTSP-style global ordering path with predictable dispatch semantics.
 - Improve **MRTSP route quality** with **bounded-horizon Dynamic Programming** while keeping target selection lightweight for repeated replanning.
 - Expose a clean parameter surface for topics, frames, QoS, decision-map tuning, goal behavior, and completion hooks.
 - Keep the default node integration practical for Nav2 while keeping the decision logic separated from project-specific backends.
@@ -216,40 +215,32 @@ Docker support is included for easier setup and reproducible testing.
 |          +-------------------------+
 |                       |
 |                       v
-|                  .-----------.
-|                /               \
-|               /    Strategy     \
-|              /     Selection     \
-|             v                   v
-|          nearest               mrtsp
-|             |                   |
-|             v                   v
-|  +---------------------+   +---------------------------+
-|  | Select Closest      |   | Build MRTSP Candidate Set |
-|  | Reachable Frontier  |   | and Cost Matrix           |
-|  +---------------------+   +---------------------------+
-|             |                       |
-|             |                       v
-|             |              .----------------.
-|             |            /                    \
-|             |           /   MRTSP Solver       \
-|             |          /      Selection         \
-|             |         v                        v
-|             |      greedy                      dp
-|             |        |                         |
-|             |        v                         v
-|             |  +----------------+   +---------------------------+
-|             |  | Greedy Matrix  |   | Score, Prune, and Search  |
-|             |  | Traversal      |   | Bounded DP Horizon        |
-|             |  +----------------+   +---------------------------+
-|             |             \             /
-|             |              v           v
-|             |       +-----------------------+
-|             |       | Ordered Frontier      |
-|             |       | Sequence              |
-|             |       +-----------------------+
-|             |                  |
-|             v                  v
+|          +---------------------------+
+|          | Build MRTSP Candidate Set |
+|          | and Cost Matrix           |
+|          +---------------------------+
+|                       |
+|                       v
+|              .----------------.
+|            /                    \
+|           /   MRTSP Solver       \
+|          /      Selection         \
+|         v                        v
+|      greedy                      dp
+|        |                         |
+|        v                         v
+|  +----------------+   +---------------------------+
+|  | Greedy Matrix  |   | Score, Prune, and Search  |
+|  | Traversal      |   | Bounded DP Horizon        |
+|  +----------------+   +---------------------------+
+|             \             /
+|              v           v
+|       +-----------------------+
+|       | Ordered Frontier      |
+|       | Sequence              |
+|       +-----------------------+
+|                  |
+|                  v
 |          +-------------------------+
 |          | Dispatch Goal via Nav2  |
 |          +-------------------------+
@@ -547,7 +538,7 @@ This is especially effective in corridor-like maps, where narrow leftover fragme
 The package includes these main pieces:
 
 - `frontier_explorer`: public executable that subscribes to map and costmap topics, queries TF, and talks to Nav2 `NavigateToPose`.
-- `frontier_exploration_ros2::frontier_exploration_ros2_core`: reusable C++ core library that contains frontier search, decision-map construction, strategy-dependent frontier selection, MRTSP solver integration, goal-state handling, settle logic, active-goal preemption, blocked-goal handling, and suppression orchestration.
+- `frontier_exploration_ros2::frontier_exploration_ros2_core`: reusable C++ core library that contains frontier search, decision-map construction, MRTSP ordering, goal-state handling, settle logic, active-goal preemption, blocked-goal handling, and suppression orchestration.
 - `frontier_debug_observer`: passive RViz debug executable that observes map, costmap, TF, and parameters, then publishes analysis overlays without sending goals or changing exploration behavior.
 - `control_exploration`: optional typed ROS service used to start, stop, schedule, and optionally shut down the explorer process.
 - `frontier_exploration_ctl`: packaged CLI helper for sending exploration control requests from the terminal.
@@ -556,7 +547,7 @@ The package includes these main pieces:
 - `config/params.yaml`: packaged baseline parameter file.
 - `mrtsp_ordering`: cost-matrix construction and greedy MRTSP traversal.
 - `mrtsp_solver`: **candidate pruning** and **bounded-horizon DP ordering**.
-- `debug_analyzer`: read-only reconstruction of nearest, MRTSP, and DP scoring for visualization.
+- `debug_analyzer`: read-only reconstruction of MRTSP and DP scoring for visualization.
 - `debug_markers`: RViz `MarkerArray` and `OccupancyGrid` output builders for debug overlays.
 
 At runtime, the node expects:
@@ -572,9 +563,7 @@ The decision path is structured in stages:
 - map ingestion and occupancy-grid wrapping
 - optional decision-map optimization with bilateral filtering and dilation
 - WFD-style frontier extraction on the active decision map
-- strategy branch:
-  - `nearest`: materialize reachable goal points around frontier clusters and select by frontier policy
-  - `mrtsp`: keep frontier cluster geometry, choose `greedy` or `dp` solver behavior, and dispatch the first frontier from the ordered sequence
+- MRTSP ordering: materialize reachable goal points around frontier clusters, choose `greedy` or `dp` solver behavior, and dispatch the first frontier from the ordered sequence
 - action dispatch, map/costmap monitoring, and runtime policy handling
 
 The package can also publish a completion event through `std_msgs/msg/Empty`. This is intentionally optional and transport-light. The explorer only reports completion. Any map export, mission chaining, docking, or higher-level orchestration should be implemented outside the package.
@@ -617,7 +606,6 @@ ros2 launch frontier_exploration_ros2 frontier_debug.launch.py \
 | ----------------------------------- | ------------------------------------------------------------------------ |
 | `explore/debug/raw_frontiers`       | Frontiers detected on the raw occupancy map                              |
 | `explore/debug/optimized_frontiers` | Frontiers detected after decision-map optimization and the active target |
-| `explore/debug/nearest_scores`      | Nearest ordering ranks and distance values                               |
 | `explore/debug/mrtsp_scores`        | MRTSP score rank, gain, path cost, and time cost                         |
 | `explore/debug/mrtsp_order`         | Greedy or DP MRTSP sequence shown as a route overlay                     |
 | `explore/debug/dp_pruning`          | DP candidate pool, prune rank, DP order rank, and pruning score          |
@@ -675,47 +663,14 @@ Topic:
 explore/debug/optimized_frontiers
 ```
 
-This overlay shows the frontier candidates that remain after decision-map optimization. These are the candidates used by nearest, MRTSP scoring, and DP pruning analysis.
+This overlay shows the frontier candidates that remain after decision-map optimization. These are the candidates used by MRTSP scoring and DP pruning analysis.
 
 Displayed values:
 
 - green points: optimized frontier candidates
-- white sphere: first active target selected by the current strategy
+- white sphere: first active target selected by the current ordering
 
 This topic is the quickest way to inspect whether the robot is choosing from the expected candidate set. When this layer differs strongly from `raw_frontiers`, the decision-map parameters are having a visible effect.
-
-### Nearest Scores
-
-Topic:
-
-```text
-explore/debug/nearest_scores
-```
-
-This overlay explains the nearest-frontier selection path. It is useful when the robot does not choose the visually closest frontier, because nearest mode still accounts for visit tolerance, preferred distance, fallback behavior, and reachable dispatch points.
-
-Displayed values:
-
-- `rank`: nearest ordering rank among visible debug candidates
-- `d_ref`: robot-to-reference distance, usually the centroid distance used for ordering
-- `d_goal`: robot-to-dispatch-point distance used for visit-tolerance checks
-- white point: selected nearest candidate
-- grey point: candidate already inside visit tolerance
-- blue point: preferred candidate pool
-- purple point: fallback candidate pool
-
-Lower `rank` means the candidate is earlier in the nearest ordering. If `d_ref` and `d_goal` differ strongly, the frontier centroid and reachable dispatch point are not in the same place.
-
-<table width="70%" align="center">
-  <tr>
-    <td align="center">
-      <img src="https://raw.githubusercontent.com/mertgulerx/readme-assets/main/frontier-exploration/debug/nearest-scores.png" alt="Nearest score debug overlay" width="95%" />
-    </td>
-  </tr>
-  <tr>
-    <td align="center"><small>Nearest Scores</small></td>
-  </tr>
-</table>
 
 ### MRTSP Scores
 
@@ -855,7 +810,7 @@ The search flow is:
 
 ```text
 1. Project the robot pose into map coordinates.
-2. If the robot starts in unknown or occupied space, recover the nearest free seed.
+2. If the robot starts in unknown or occupied space, recover the closest free seed.
 3. Expand a BFS over reachable map cells.
 4. When a frontier cell is detected, grow the full connected frontier cluster.
 5. Reject tiny clusters.
@@ -872,7 +827,7 @@ Each frontier cluster is converted into a `FrontierCandidate` with:
 - a centroid used for ranking and equivalence checks
 - a center point used as the MRTSP dispatch baseline
 - a start world point used by the MRTSP path-cost calculation
-- an optional reachable goal point used by nearest-style navigation dispatch
+- an optional reachable goal point used by navigation dispatch and preemption checks
 - a cluster size used as the information-gain proxy
 
 The centroid is computed directly from frontier cells:
@@ -882,7 +837,7 @@ c_x = (1 / N) * sum(x_i)
 c_y = (1 / N) * sum(y_i)
 ```
 
-In `nearest` mode, the node searches free and unblocked neighbors around frontier cells and selects a reachable navigation point close to the centroid:
+The node searches free and unblocked neighbors around frontier cells and selects a reachable navigation point close to the centroid:
 
 ```text
 choose g that minimizes ||g - c||^2
@@ -944,7 +899,7 @@ In practice, this stage:
 
 ### Frontier Cost Model
 
-In `mrtsp` mode, the package uses frontier size as the information-gain proxy:
+The package uses frontier size as the information-gain proxy:
 
 ```text
 P(V_i, V_j) = size(V_j)
@@ -997,9 +952,9 @@ Matrix node `0` is the robot start node. Matrix nodes `1..M` are frontier candid
 
 Three implementation details matter in practice:
 
-- in `mrtsp` mode, frontier dispatch uses `center_point` when no reachable navigation `goal_point` is materialized
-- `mrtsp` mode forces decision-map optimization on even if `frontier_map_optimization_enabled=false`
-- `nearest` mode still materializes reachable goal points and can use local costmap-aware frontier eligibility during candidate construction
+- frontier dispatch uses `center_point` when no reachable navigation `goal_point` is materialized
+- `frontier_map_optimization_enabled` now directly controls whether decision-map optimization is applied
+- reachable `goal_point` materialization stays active because dispatch, completion-distance, suppression, and visible-gain logic all use it
 
 ### Greedy MRTSP Ordering
 
@@ -1144,16 +1099,6 @@ where popcount(mask) = K
 **Parent pointers** reconstruct the selected sequence. Only `sequence[0]` is dispatched, then the map and frontier set are refreshed before the next decision. If the **DP solver** cannot build a finite route, the core falls back to **greedy ordering** on the same pruned matrix.
 
 The implementation keeps only the **active DP depth layer** and the parent states needed for reconstruction. This keeps memory bounded by the selected **candidate limit** and **planning horizon** instead of building a full global TSP solver.
-
-### Nearest Strategy Selection
-
-After frontier extraction, the node selects a target according to the current nearest-frontier policy:
-
-- preferred frontier: closest frontier that still satisfies `frontier_selection_min_distance`
-- escape frontier: farthest candidate when no preferred frontier is available and escape mode is still active
-- close-range fallback: farthest remaining candidate when the preferred path is unavailable
-
-The escape path is deliberate. It helps the robot move away from a locally congested or trivial region until the first successful frontier goal is completed. When a second frontier is available, the dispatched goal orientation is also biased toward that next frontier to reduce unnecessary reorientation after arrival.
 
 ### Costmap Blocking Policy
 
@@ -1374,16 +1319,15 @@ colcon build --packages-select frontier_exploration_ros2
 > [!WARNING]
 > WFD-based frontier extraction tends to select points close to obstacles. The packaged config enables `goal_preemption_enabled` by default, and it is still strongly recommended to also enable `goal_skip_on_blocked_goal` in your runtime configuration.
 
-The node declares `strategy: nearest` as its base default. The packaged parameter file uses **MRTSP ordering** with **bounded-horizon DP**:
+The packaged parameter file uses **MRTSP ordering** with **bounded-horizon DP**:
 
 ```yaml
-strategy: mrtsp
 mrtsp_solver: dp
 dp_solver_candidate_limit: 15
 dp_planning_horizon: 10
 ```
 
-To use the **local distance policy**, set `strategy: nearest`. To use the **simple matrix traversal** path, keep `strategy: mrtsp` and set `mrtsp_solver: greedy`.
+To use the **simple matrix traversal** path, set `mrtsp_solver: greedy`.
 
 Launch with the packaged parameter file:
 
@@ -1698,7 +1642,7 @@ Notes:
 - `params_file` controls the full YAML source for the node.
 - the launch file only overrides `autostart`, `control_service_enabled`, the QoS-related parameters listed above, and `use_sim_time`
 - all other node behavior is defined by the selected parameter file
-- strategy selection, MRTSP solver selection, decision-map tuning, suppression behavior, startup grace, and suppressed-frontier waiting policy are configured in YAML, not through dedicated launch arguments
+- MRTSP solver selection, decision-map tuning, suppression behavior, startup grace, and suppressed-frontier waiting policy are configured in YAML, not through dedicated launch arguments
 
 <p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
 
@@ -1706,7 +1650,7 @@ Notes:
 
 Parameters are declared in `frontier_explorer_node.cpp`.
 
-The packaged launch path uses `config/params.yaml` as its baseline parameter file, so launched behavior may differ from the declared defaults where that YAML intentionally overrides them. Notable examples are `strategy`, `occ_threshold`, and `goal_preemption_enabled`: the node declares `nearest`, `50`, and `false`, while the packaged YAML sets `mrtsp`, `60`, and `true`.
+The packaged launch path uses `config/params.yaml` as its baseline parameter file, so launched behavior may differ from the declared defaults where that YAML intentionally overrides them. Notable examples are `occ_threshold` and `goal_preemption_enabled`: the node declares `50` and `false`, while the packaged YAML sets `60` and `true`.
 
 ### Topics and Frames
 
@@ -1729,8 +1673,7 @@ The packaged launch path uses `config/params.yaml` as its baseline parameter fil
 | `autostart`                         | `bool`   | `true`    | Starts exploration automatically when the node comes up      | Set `false` to keep the node in cold idle until a control request                      |
 | `control_service_enabled`           | `bool`   | `true`    | Enables the `control_exploration` service                    | If `autostart=false`, the node keeps the service enabled even when this is set `false` |
 | `frontier_marker_scale`             | `double` | `0.15`    | Point marker size for frontier visualization                 | Used by the RViz marker publisher                                                      |
-| `strategy`                          | `string` | `nearest` | Frontier-selection strategy                                  | Accepted values are `nearest` and `mrtsp`; packaged `config/params.yaml` sets `mrtsp`  |
-| `frontier_map_optimization_enabled` | `bool`   | `true`    | Enables decision-map optimization before frontier extraction | In `mrtsp` mode, optimization is effectively always enabled                            |
+| `frontier_map_optimization_enabled` | `bool`   | `true`    | Enables decision-map optimization before frontier extraction | Applies directly to the MRTSP-only runtime                                             |
 
 ### QoS
 
@@ -1758,18 +1701,19 @@ The packaged launch path uses `config/params.yaml` as its baseline parameter fil
 | `weight_gain_ws`               | `double` | `1.0`   | Weight applied to the MRTSP information-gain term                          | Larger values make frontier size dominate more strongly                     |
 | `max_linear_speed_vmax`        | `double` | `0.5`   | Maximum linear speed used in the MRTSP start-node lower-bound term         | Used only while estimating the initial robot-to-frontier transition         |
 | `max_angular_speed_wmax`       | `double` | `1.0`   | Maximum angular speed used in the MRTSP start-node lower-bound term        | Used only while estimating the initial robot-to-frontier transition         |
-| `mrtsp_solver`                 | `string` | `dp`    | Solver used when `strategy: mrtsp`                                         | Accepted values are `dp` and `greedy`; unknown values fall back to `greedy` |
+| `mrtsp_solver`                 | `string` | `dp`    | Solver used for frontier ordering                                          | Accepted values are `dp` and `greedy`; unknown values fall back to `greedy` |
 | `dp_solver_candidate_limit`    | `int`    | `15`    | Maximum scored frontier candidates passed into bounded-horizon DP          | Clamped to `1..60`; this is candidate pool size, not route depth            |
 | `dp_planning_horizon`          | `int`    | `10`    | Number of distinct frontier visits searched inside the candidate pool      | Clamped to at least `1`; this is route depth, not candidate count           |
 | `occ_threshold`                | `int`    | `50`    | Occupancy threshold used by frontier filtering and decision-map conversion | Packaged `config/params.yaml` overrides this to `60`                        |
-| `min_frontier_size_cells`      | `int`    | `5`     | Minimum connected frontier size accepted during candidate construction     | Affects both `nearest` and `mrtsp` candidate formation                      |
+| `min_frontier_size_cells`      | `int`    | `5`     | Minimum connected frontier size accepted during candidate construction     | Affects frontier candidate formation                                       |
 
 ### Exploration Behavior
 
 | Parameter                                   | Type     | Default | Description                                                                                       | Notes                                                                                                                                                                                                                                                          |
 | ------------------------------------------- | -------- | ------- | ------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `frontier_candidate_min_goal_distance_m`    | `double` | `0.0`   | Minimum robot-to-candidate distance applied during frontier candidate construction                | This is an early search/materialization filter; in `mrtsp` mode it filters by center-point distance and is not the same control as `frontier_selection_min_distance`                                                                                           |
-| `frontier_selection_min_distance`           | `double` | `0.5`   | Minimum robot-to-goal distance preferred during nearest-frontier selection                        | This is a later selection policy control; if no far-enough goal exists, the code falls back to the best reachable candidate                                                                                                                                    |
+| `frontier_candidate_min_goal_distance_m`    | `double` | `0.0`   | Minimum robot-to-candidate distance applied during frontier candidate construction                | Early search/materialization control used while building reachable dispatch goals                                                                                                                             |
+| `frontier_selection_min_distance`           | `double` | `0.5`   | Minimum robot-to-goal distance preferred during final dispatch generation                         | If the chosen dispatch point is too close, the code searches for the closest free replacement point that still satisfies this distance when possible                                                             |
+| `escape_enabled`                            | `bool`   | `false` | Retries frontier search and dispatch without minimum-distance gates when the normal search finds nothing | Intended to break startup lockups when short LiDAR range or SLAM motion thresholds prevent enough initial map opening; packaged example configs enable it explicitly                                                                                              |
 | `frontier_visit_tolerance`                  | `double` | `0.30`  | Tolerance used for frontier equivalence and already-visited checks                                | Also drives quantized frontier signatures and suppression attempt bucketing                                                                                                                                                                                    |
 | `goal_preemption_enabled`                   | `bool`   | `false` | Enables target-pose visible-reveal-gain-based frontier preemption while a frontier goal is active | Packaged `config/params.yaml` overrides this to `true`, so the default launch path runs with preemption enabled                                                                                                                                                |
 | `goal_skip_on_blocked_goal`                 | `bool`   | `false` | Skips the active goal when it becomes blocked                                                     | Switches to another frontier when available; otherwise the blocked goal can be canceled                                                                                                                                                                        |
@@ -1780,7 +1724,6 @@ The packaged launch path uses `config/params.yaml` as its baseline parameter fil
 | `goal_preemption_lidar_ray_step_deg`        | `double` | `1.0`   | Angular sampling step used by the target-pose LiDAR ray-cast estimate                             | Smaller steps cost more CPU but resolve narrow structure better                                                                                                                                                                                                |
 | `goal_preemption_lidar_min_reveal_length_m` | `double` | `0.5`   | Minimum visible reveal length required to keep the active goal in visible-reveal-gain mode        | Below this threshold, the active goal no longer qualifies to stay in visible-reveal-gain mode                                                                                                                                                                  |
 | `goal_preemption_lidar_yaw_offset_deg`      | `double` | `0.0`   | Additional yaw offset applied to the target-pose LiDAR heading model                              | Useful when the effective sensing direction differs from the goal heading model                                                                                                                                                                                |
-| `escape_enabled`                            | `bool`   | `true`  | Enables escape mode until the first successful frontier goal                                      | Allows a farthest-frontier fallback before normal preferred selection becomes available                                                                                                                                                                        |
 | `post_goal_settle_enabled`                  | `bool`   | `true`  | Enables the post-goal settle gate after a successful frontier goal                                | Also gates queued preemption replacements; when `false`, the explorer skips settle timing and stability checks and waits only for one fresh map update edge after success                                                                                      |
 | `post_goal_min_settle`                      | `double` | `0.80`  | Minimum time to wait after a successful frontier goal                                             | Used only when `post_goal_settle_enabled=true`                                                                                                                                                                                                                 |
 | `post_goal_required_map_updates`            | `int`    | `3`     | Required number of update events before sending the next frontier goal                            | Used only when `post_goal_settle_enabled=true`; internally clamped to at least `1`                                                                                                                                                                             |
@@ -1834,7 +1777,6 @@ frontier_explorer:
     optimized_map_topic: /explore/optimized_map
     frontier_marker_scale: 0.15
 
-    strategy: mrtsp
     mrtsp_solver: dp
     dp_solver_candidate_limit: 15
     dp_planning_horizon: 10
@@ -1864,6 +1806,7 @@ frontier_explorer:
 
     frontier_candidate_min_goal_distance_m: 0.5
     frontier_selection_min_distance: 0.5
+    escape_enabled: true
     frontier_visit_tolerance: 0.30
 
     goal_preemption_enabled: true
@@ -1876,7 +1819,6 @@ frontier_explorer:
     goal_preemption_lidar_min_reveal_length_m: 0.5
     goal_preemption_lidar_yaw_offset_deg: 0.0
 
-    escape_enabled: true
     post_goal_settle_enabled: false
     post_goal_min_settle: 0.80
     post_goal_required_map_updates: 3
@@ -1945,9 +1887,6 @@ frontier_explorer:
     # Keep the optional runtime control service available for manual stop/start flows.
     control_service_enabled: false
 
-    # Use MRTSP ordering for global frontier route selection.
-    strategy: mrtsp
-
     # Use bounded-horizon Dynamic Programming for the MRTSP route order.
     # Set this to greedy for simple one-step-at-a-time matrix traversal.
     mrtsp_solver: dp
@@ -2007,6 +1946,10 @@ frontier_explorer:
     # Example: 0.0 allows immediate local cleanup, 0.5 forces a small commit distance.
     frontier_candidate_min_goal_distance_m: 0.5
 
+    # Retry once without minimum-distance filters when no frontier survives startup gating.
+    # This helps short-range LiDAR or SLAM pipelines that need a small initial movement.
+    escape_enabled: true
+
     # Effective sensor range subtracted inside the paper's path-cost term.
     # Larger values reduce the effective traversal penalty between frontiers.
     # This favors frontiers that can reveal more space from farther away.
@@ -2042,9 +1985,6 @@ frontier_explorer:
     # Higher values help bridge tiny gaps, but can also over-open door thresholds.
     # Example: 0 keeps the map literal, 2 can merge thin fragmented frontiers.
     dilation_kernel_radius_cells: 1
-
-    # Allow a farther frontier fallback until the first successful frontier.
-    escape_enabled: true
 
     # Return to the recorded start pose once no frontiers remain.
     return_to_start_on_complete: true
@@ -2200,7 +2140,7 @@ Current test coverage includes:
 - MRTSP candidate pruning and bounded-horizon DP route selection
 - greedy MRTSP compatibility
 - MRTSP candidate distance filtering
-- dispatch-point behavior in nearest vs MRTSP mode
+- dispatch-point behavior and goal-point fallback semantics
 
 <p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
 

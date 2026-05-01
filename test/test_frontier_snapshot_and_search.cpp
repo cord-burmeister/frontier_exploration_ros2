@@ -87,6 +87,11 @@ FrontierCandidate dummy_frontier(double x = 1.0, double y = 1.0)
   return FrontierCandidate{{x, y}, {x, y}, 8};
 }
 
+FrontierCandidate make_frontier(double x, double y, int size = 1)
+{
+  return FrontierCandidate{{x, y}, {x, y}, size};
+}
+
 void expect_frontier_results_equal(
   const FrontierSearchResult & expected,
   const FrontierSearchResult & actual)
@@ -179,7 +184,7 @@ TEST(FrontierSearchTests, GlobalCostmapBlockingEliminatesFrontiers)
   EXPECT_TRUE(result.frontiers.empty());
 }
 
-TEST(FrontierSearchTests, LocalCostmapBlockingEliminatesFrontierGoals)
+TEST(FrontierSearchTests, LocalCostmapBlockingDoesNotEliminateFrontierExtraction)
 {
   std::vector<std::pair<int, int>> free_cells;
   for (int x = 3; x < 7; ++x) {
@@ -200,7 +205,7 @@ TEST(FrontierSearchTests, LocalCostmapBlockingEliminatesFrontierGoals)
     costmap,
     local_costmap);
 
-  EXPECT_TRUE(result.frontiers.empty());
+  EXPECT_FALSE(result.frontiers.empty());
 }
 
 TEST(FrontierSearchTests, FrontierChoiceDeterministicAcrossIdenticalRuns)
@@ -472,8 +477,6 @@ TEST(FrontierSnapshotTests, DebugOutputsDoNotChangeSnapshotOrSelection)
   quiet_core->params.frontier_map_optimization_enabled = true;
   debug_core->callbacks.debug_outputs_enabled = []() {return true;};
   quiet_core->callbacks.debug_outputs_enabled = []() {return false;};
-  debug_core->params.strategy = FrontierStrategy::MRTSP;
-  quiet_core->params.strategy = FrontierStrategy::MRTSP;
 
   auto map_msg = build_grid(20, 20, -1);
   set_cells(
@@ -521,8 +524,8 @@ TEST(FrontierSnapshotTests, DebugOutputsDoNotChangeSnapshotOrSelection)
   ASSERT_EQ(debug_snapshot.frontiers.size(), quiet_snapshot.frontiers.size());
   EXPECT_EQ(debug_snapshot.signature, quiet_snapshot.signature);
   for (std::size_t i = 0; i < debug_snapshot.frontiers.size(); ++i) {
-    const auto & debug_candidate = std::get<FrontierCandidate>(debug_snapshot.frontiers[i]);
-    const auto & quiet_candidate = std::get<FrontierCandidate>(quiet_snapshot.frontiers[i]);
+    const auto & debug_candidate = debug_snapshot.frontiers[i];
+    const auto & quiet_candidate = quiet_snapshot.frontiers[i];
     EXPECT_EQ(debug_candidate.centroid, quiet_candidate.centroid);
     EXPECT_EQ(debug_candidate.goal_point, quiet_candidate.goal_point);
     EXPECT_EQ(debug_candidate.size, quiet_candidate.size);
@@ -533,24 +536,22 @@ TEST(FrontierSnapshotTests, DebugOutputsDoNotChangeSnapshotOrSelection)
 
   ASSERT_TRUE(debug_selection.frontier.has_value());
   ASSERT_TRUE(quiet_selection.frontier.has_value());
-  const auto & debug_selected = std::get<FrontierCandidate>(*debug_selection.frontier);
-  const auto & quiet_selected = std::get<FrontierCandidate>(*quiet_selection.frontier);
+  const auto & debug_selected = *debug_selection.frontier;
+  const auto & quiet_selected = *quiet_selection.frontier;
   EXPECT_EQ(debug_selected.centroid, quiet_selected.centroid);
   EXPECT_EQ(debug_selected.goal_point, quiet_selected.goal_point);
   EXPECT_EQ(debug_selected.size, quiet_selected.size);
 }
 
-TEST(FrontierSnapshotTests, MrtspForcesDecisionMapOptimizationRegardlessOfParameter)
+TEST(FrontierSnapshotTests, DecisionMapOptimizationFollowsParameterInMrtspOnlyCore)
 {
   auto core = make_snapshot_core();
-  core->params.strategy = FrontierStrategy::MRTSP;
   core->params.frontier_map_optimization_enabled = false;
 
   const auto config = core->decision_map_config();
 
-  EXPECT_TRUE(core->mrtsp_enabled());
-  EXPECT_TRUE(core->frontier_map_optimization_enabled());
-  EXPECT_TRUE(config.optimization_enabled);
+  EXPECT_FALSE(core->frontier_map_optimization_enabled());
+  EXPECT_FALSE(config.optimization_enabled);
 }
 
 TEST(FrontierSnapshotTests, SnapshotInvalidatesOnDecisionMapGenerationChange)
@@ -752,13 +753,13 @@ TEST(FrontierSnapshotTests, ObservePostGoalSettleCanAdvanceFromCostmapTicksWitho
   EXPECT_EQ(refresh_calls, 0);
 }
 
-TEST(FrontierSelectionTests, SelectFrontierSequenceAddsLookAheadFrontier)
+TEST(FrontierSelectionTests, SelectFrontierSequenceReturnsFullMrtspOrdering)
 {
   auto core = make_snapshot_core();
   const FrontierSequence frontiers{
-    PrimitiveFrontier{1.0, 0.0},
-    PrimitiveFrontier{2.0, 0.0},
-    PrimitiveFrontier{5.0, 0.0},
+    make_frontier(1.0, 0.0),
+    make_frontier(2.0, 0.0),
+    make_frontier(5.0, 0.0),
   };
 
   const auto frontier_sequence = core->select_frontier_sequence(
@@ -766,16 +767,18 @@ TEST(FrontierSelectionTests, SelectFrontierSequenceAddsLookAheadFrontier)
     make_pose(0.0, 0.0),
     frontiers.front());
 
-  ASSERT_EQ(frontier_sequence.size(), 2U);
-  EXPECT_TRUE(core->are_frontiers_equivalent(frontier_sequence[0], frontiers[0]));
-  EXPECT_TRUE(core->are_frontiers_equivalent(frontier_sequence[1], frontiers[1]));
+  const auto selection = core->select_frontier(frontiers, make_pose(0.0, 0.0));
+
+  ASSERT_EQ(frontier_sequence.size(), frontiers.size());
+  ASSERT_TRUE(selection.frontier.has_value());
+  EXPECT_TRUE(core->are_frontiers_equivalent(frontier_sequence.front(), *selection.frontier));
 }
 
 TEST(FrontierSelectionTests, BuildGoalPoseFacesTargetWhenLookAheadUnavailable)
 {
   auto core = make_snapshot_core();
   const auto goal_pose = core->build_goal_pose(
-    PrimitiveFrontier{1.0, 1.0},
+    make_frontier(1.0, 1.0),
     make_pose(0.0, 0.0, 1.2));
 
   EXPECT_NEAR(goal_pose.pose.position.x, 1.0, 1e-9);

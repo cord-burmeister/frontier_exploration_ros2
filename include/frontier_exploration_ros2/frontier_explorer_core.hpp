@@ -71,7 +71,6 @@ struct FrontierExplorerCoreParams
   std::string frontier_marker_topic{"explore/frontiers"};
   std::string selected_frontier_topic{"explore/selected_frontier"};
   std::string optimized_map_topic{"explore/optimized_map"};
-  FrontierStrategy strategy{FrontierStrategy::NEAREST};
   double frontier_marker_scale{0.15};
   bool frontier_map_optimization_enabled{true};
   double sigma_s{2.0};
@@ -84,13 +83,14 @@ struct FrontierExplorerCoreParams
   double max_angular_speed_wmax{1.0};
   // MRTSP can traverse its cost matrix greedily or with bounded dynamic programming.
   std::string mrtsp_solver{"dp"};
-  // DP limits are algorithm-level controls, so they are not tied to one strategy name.
+  // DP limits are algorithm-level controls for the MRTSP solver.
   std::size_t dp_solver_candidate_limit{15};
   std::size_t dp_planning_horizon{10};
   int occ_threshold{OCC_THRESHOLD};
   int min_frontier_size_cells{MIN_FRONTIER_SIZE};
   double frontier_candidate_min_goal_distance_m{0.0};
   double frontier_selection_min_distance{0.5};
+  bool escape_enabled{false};
   double frontier_visit_tolerance{0.30};
   bool goal_preemption_enabled{false};
   bool goal_skip_on_blocked_goal{false};
@@ -108,7 +108,6 @@ struct FrontierExplorerCoreParams
   double goal_preemption_lidar_min_reveal_length_m{0.5};
   // Optional heading correction for the target-pose sensor model.
   double goal_preemption_lidar_yaw_offset_deg{0.0};
-  bool escape_enabled{true};
   bool post_goal_settle_enabled{true};
   double post_goal_min_settle{0.80};
   int post_goal_required_map_updates{3};
@@ -165,7 +164,6 @@ public:
   void costmapCallback(const OccupancyGrid2d & map_msg);
   void localCostmapCallback(const OccupancyGrid2d & map_msg);
 
-  [[nodiscard]] bool mrtsp_enabled() const;
   [[nodiscard]] bool frontier_map_optimization_enabled() const;
   [[nodiscard]] FrontierSearchOptions frontier_search_options() const;
   [[nodiscard]] DecisionMapConfig decision_map_config() const;
@@ -197,10 +195,6 @@ public:
   void observe_post_goal_settle_update(bool refresh_frontier_signature = true);
   bool post_goal_settle_ready() const;
 
-  FrontierSelectionResult select_primitive_frontier(
-    const FrontierSequence & frontiers,
-    const geometry_msgs::msg::Pose & current_pose) const;
-
   FrontierSelectionResult select_frontier(
     const FrontierSequence & frontiers,
     const geometry_msgs::msg::Pose & current_pose) const;
@@ -224,7 +218,8 @@ public:
 
   geometry_msgs::msg::PoseStamped build_dispatch_goal_pose(
     const FrontierLike & target_frontier,
-    const geometry_msgs::msg::Pose & current_pose) const;
+    const geometry_msgs::msg::Pose & current_pose,
+    bool bypass_min_distance_dispatch = false) const;
 
   std::vector<geometry_msgs::msg::PoseStamped> build_goal_pose_sequence(
     const FrontierSequence & target_frontiers,
@@ -290,7 +285,8 @@ public:
   bool send_frontier_goal(
     const FrontierSequence & frontier_sequence,
     const geometry_msgs::msg::Pose & current_pose,
-    const std::string & description);
+    const std::string & description,
+    bool bypass_min_distance_dispatch = false);
 
   void dispatch_goal_request(
     const std::string & action_name,
@@ -372,7 +368,6 @@ public:
     int local_costmap_generation{0};
     std::pair<int, int> robot_map_cell{0, 0};
     double min_goal_distance{0.0};
-    FrontierStrategy strategy{FrontierStrategy::NEAREST};
     FrontierSearchOptions search_options;
     std::size_t frontier_count{0};
   };
@@ -430,7 +425,6 @@ public:
   std::optional<FrontierSignature> post_goal_last_frontier_signature;
 
   // Escape and return-to-start behavior flags.
-  bool escape_active{true};
   bool return_to_start_started{false};
   bool return_to_start_completed{false};
   bool suppressed_return_to_start_started{false};

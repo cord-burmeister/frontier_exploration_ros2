@@ -68,19 +68,6 @@ private:
   CancelRequester cancel_requester_;
 };
 
-FrontierStrategy parse_strategy(std::string value)
-{
-  std::transform(
-    value.begin(),
-    value.end(),
-    value.begin(),
-    [](unsigned char ch) {return static_cast<char>(std::tolower(ch));});
-  if (value == "mrtsp") {
-    return FrontierStrategy::MRTSP;
-  }
-  return FrontierStrategy::NEAREST;
-}
-
 }  // namespace
 
 FrontierExplorerNode::FrontierExplorerNode(const rclcpp::NodeOptions & options)
@@ -97,7 +84,6 @@ FrontierExplorerNode::FrontierExplorerNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<std::string>("frontier_marker_topic", "explore/frontiers");
   this->declare_parameter<std::string>("selected_frontier_topic", "explore/selected_frontier");
   this->declare_parameter<std::string>("optimized_map_topic", "explore/optimized_map");
-  this->declare_parameter<std::string>("strategy", "nearest");
   this->declare_parameter<std::string>("map_qos_durability", "transient_local");
   this->declare_parameter<std::string>("map_qos_reliability", "reliable");
   this->declare_parameter<int>("map_qos_depth", 1);
@@ -128,6 +114,7 @@ FrontierExplorerNode::FrontierExplorerNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<int>("min_frontier_size_cells", 5);
   this->declare_parameter<double>("frontier_candidate_min_goal_distance_m", 0.0);
   this->declare_parameter<double>("frontier_selection_min_distance", 0.5);
+  this->declare_parameter<bool>("escape_enabled", false);
   this->declare_parameter<double>("frontier_visit_tolerance", 0.30);
   this->declare_parameter<bool>("goal_preemption_enabled", false);
   this->declare_parameter<bool>("goal_skip_on_blocked_goal", false);
@@ -138,7 +125,6 @@ FrontierExplorerNode::FrontierExplorerNode(const rclcpp::NodeOptions & options)
   this->declare_parameter<double>("goal_preemption_complete_if_within_m", 0.0);
   this->declare_parameter<double>("goal_preemption_lidar_min_reveal_length_m", 0.5);
   this->declare_parameter<double>("goal_preemption_lidar_yaw_offset_deg", 0.0);
-  this->declare_parameter<bool>("escape_enabled", true);
   this->declare_parameter<bool>("post_goal_settle_enabled", true);
   this->declare_parameter<double>("post_goal_min_settle", 0.80);
   this->declare_parameter<int>("post_goal_required_map_updates", 3);
@@ -168,7 +154,6 @@ FrontierExplorerNode::FrontierExplorerNode(const rclcpp::NodeOptions & options)
   params_.frontier_marker_topic = this->get_parameter("frontier_marker_topic").as_string();
   params_.selected_frontier_topic = this->get_parameter("selected_frontier_topic").as_string();
   params_.optimized_map_topic = this->get_parameter("optimized_map_topic").as_string();
-  params_.strategy = parse_strategy(this->get_parameter("strategy").as_string());
   params_.frontier_marker_scale = this->get_parameter("frontier_marker_scale").as_double();
   autostart_ = this->get_parameter("autostart").as_bool();
   control_service_enabled_ = this->get_parameter("control_service_enabled").as_bool();
@@ -204,6 +189,7 @@ FrontierExplorerNode::FrontierExplorerNode(const rclcpp::NodeOptions & options)
     "frontier_candidate_min_goal_distance_m").as_double();
   params_.frontier_selection_min_distance = this->get_parameter(
     "frontier_selection_min_distance").as_double();
+  params_.escape_enabled = this->get_parameter("escape_enabled").as_bool();
   params_.frontier_visit_tolerance = this->get_parameter("frontier_visit_tolerance").as_double();
   params_.goal_preemption_enabled = this->get_parameter(
     "goal_preemption_enabled").as_bool();
@@ -221,7 +207,6 @@ FrontierExplorerNode::FrontierExplorerNode(const rclcpp::NodeOptions & options)
     "goal_preemption_lidar_min_reveal_length_m").as_double();
   params_.goal_preemption_lidar_yaw_offset_deg = this->get_parameter(
     "goal_preemption_lidar_yaw_offset_deg").as_double();
-  params_.escape_enabled = this->get_parameter("escape_enabled").as_bool();
   params_.post_goal_settle_enabled = this->get_parameter("post_goal_settle_enabled").as_bool();
   params_.post_goal_min_settle = this->get_parameter("post_goal_min_settle").as_double();
   params_.post_goal_required_map_updates = this->get_parameter("post_goal_required_map_updates").as_int();
@@ -364,8 +349,7 @@ FrontierExplorerNode::FrontierExplorerNode(const rclcpp::NodeOptions & options)
 
   RCLCPP_INFO(
     this->get_logger(),
-    "Frontier explorer initialized with strategy='%s', autostart=%s, control_service_enabled=%s, map '%s', global costmap '%s', local costmap '%s', frontier action '%s'",
-    params_.strategy == FrontierStrategy::MRTSP ? "mrtsp" : "nearest",
+    "Frontier explorer initialized with autostart=%s, control_service_enabled=%s, map '%s', global costmap '%s', local costmap '%s', frontier action '%s'",
     autostart_ ? "true" : "false",
     control_service_enabled_ ? "true" : "false",
     params_.map_topic.c_str(),
@@ -383,21 +367,17 @@ FrontierExplorerNode::FrontierExplorerNode(const rclcpp::NodeOptions & options)
     params_.min_frontier_size_cells,
     params_.frontier_candidate_min_goal_distance_m,
     debugOutputsEnabled() ? "debug-log-level" : "disabled");
-  if (params_.strategy == FrontierStrategy::MRTSP) {
-    // Print solver bounds only for MRTSP startup so non-MRTSP strategies keep their
-    // initialization log focused on the controls they actually consume.
-    RCLCPP_INFO(
-      this->get_logger(),
-      "MRTSP config: solver='%s', dp_candidate_limit=%zu, dp_planning_horizon=%zu, sensor_effective_range_m=%.2f, weight_distance_wd=%.2f, weight_gain_ws=%.2f, max_linear_speed_vmax=%.2f, max_angular_speed_wmax=%.2f",
-      core_->params.mrtsp_solver.c_str(),
-      core_->params.dp_solver_candidate_limit,
-      core_->params.dp_planning_horizon,
-      params_.sensor_effective_range_m,
-      params_.weight_distance_wd,
-      params_.weight_gain_ws,
-      params_.max_linear_speed_vmax,
-      params_.max_angular_speed_wmax);
-  }
+  RCLCPP_INFO(
+    this->get_logger(),
+    "MRTSP config: solver='%s', dp_candidate_limit=%zu, dp_planning_horizon=%zu, sensor_effective_range_m=%.2f, weight_distance_wd=%.2f, weight_gain_ws=%.2f, max_linear_speed_vmax=%.2f, max_angular_speed_wmax=%.2f",
+    core_->params.mrtsp_solver.c_str(),
+    core_->params.dp_solver_candidate_limit,
+    core_->params.dp_planning_horizon,
+    params_.sensor_effective_range_m,
+    params_.weight_distance_wd,
+    params_.weight_gain_ws,
+    params_.max_linear_speed_vmax,
+    params_.max_angular_speed_wmax);
   RCLCPP_INFO(
     this->get_logger(),
     "Using post-goal settle config: enabled=%s, post_goal_min_settle=%.2fs, post_goal_required_map_updates=%d, post_goal_stable_updates=%d, all_frontiers_suppressed_behavior=%s",
@@ -1143,7 +1123,7 @@ void FrontierExplorerNode::publishOptimizedMap(const nav_msgs::msg::OccupancyGri
 
 bool FrontierExplorerNode::frontierMapOptimizationEnabled() const
 {
-  return params_.strategy == FrontierStrategy::MRTSP || params_.frontier_map_optimization_enabled;
+  return params_.frontier_map_optimization_enabled;
 }
 
 bool FrontierExplorerNode::debugOutputsEnabled() const

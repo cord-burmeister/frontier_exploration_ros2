@@ -247,7 +247,6 @@ TEST(DecisionMapTests, OptimizationReducesFrontierCountWhilePreservingOccupiedCe
 
   FrontierSearchOptions options;
   options.min_frontier_size_cells = 1;
-  options.build_navigation_goal_point = false;
 
   const auto raw_frontiers = get_frontier(
     make_pose(3.0, 3.0),
@@ -309,7 +308,6 @@ TEST(DecisionMapTests, OptimizationKeepsNarrowDoorwayTraversable)
 
   FrontierSearchOptions options;
   options.min_frontier_size_cells = 1;
-  options.build_navigation_goal_point = false;
   const auto decision_frontiers = get_frontier(
     make_pose(6.0, 3.0),
     decision_map_result.decision_map,
@@ -483,7 +481,7 @@ TEST(DecisionMapTests, BorderDirtySpansRecomputeMatchesFullRecompute)
   EXPECT_EQ(workspace.optimized_map_msg->data, full_result.optimized_map_msg.data);
 }
 
-TEST(MrtspOrderingTests, GreedyOrderingCanPreferHighGainFrontierOverNearest)
+TEST(MrtspOrderingTests, GreedyOrderingCanPreferHighGainFrontierOverCloserCandidate)
 {
   const FrontierCandidate near_small_gain{
     {1.0, 0.0},
@@ -527,7 +525,7 @@ TEST(MrtspOrderingTests, GreedyOrderingCanPreferHighGainFrontierOverNearest)
 
 TEST(MrtspOrderingTests, FrontierDispatchPointFallsBackToCenterPointWithoutGoalPoint)
 {
-  const FrontierCandidate nearest_candidate{
+  const FrontierCandidate candidate_with_goal_point{
     {4.0, 4.0},
     {3.0, 4.0},
     {3, 4},
@@ -544,11 +542,11 @@ TEST(MrtspOrderingTests, FrontierDispatchPointFallsBackToCenterPointWithoutGoalP
     std::nullopt,
     8};
 
-  EXPECT_EQ(frontier_position(FrontierLike{nearest_candidate}), (std::pair<double, double>{2.0, 4.0}));
-  EXPECT_EQ(frontier_position(FrontierLike{mrtsp_candidate}), (std::pair<double, double>{3.0, 4.0}));
+  EXPECT_EQ(frontier_position(candidate_with_goal_point), (std::pair<double, double>{2.0, 4.0}));
+  EXPECT_EQ(frontier_position(mrtsp_candidate), (std::pair<double, double>{3.0, 4.0}));
 }
 
-TEST(MrtspOrderingTests, MinGoalDistanceFiltersMrtspCandidateByCenterPointDistance)
+TEST(MrtspOrderingTests, MinGoalDistancePrefersFarEnoughGoalPointWhenAvailable)
 {
   auto map_msg = build_grid(8, 8, 0);
   auto costmap_msg = build_grid(8, 8, 0);
@@ -561,36 +559,31 @@ TEST(MrtspOrderingTests, MinGoalDistanceFiltersMrtspCandidateByCenterPointDistan
     frontier_cache.getPoint(1, 2),
     frontier_cache.getPoint(2, 1),
     frontier_cache.getPoint(2, 2),
+    frontier_cache.getPoint(3, 1),
+    frontier_cache.getPoint(3, 2),
+    frontier_cache.getPoint(4, 1),
+    frontier_cache.getPoint(4, 2),
   };
 
   FrontierSearchOptions options;
   options.min_frontier_size_cells = 1;
   options.candidate_min_goal_distance_m = 2.0;
-  options.build_navigation_goal_point = false;
 
-  const auto rejected_candidate = build_frontier_candidate(
+  const auto candidate = build_frontier_candidate(
     frontier_points,
     {1, 1},
     occupancy_map,
     costmap,
     std::nullopt,
     frontier_cache,
-    make_pose(2.0, 2.0),
+    make_pose(1.5, 1.5),
     0.0,
     options);
-  EXPECT_FALSE(rejected_candidate.has_value());
-
-  const auto accepted_candidate = build_frontier_candidate(
-    frontier_points,
-    {1, 1},
-    occupancy_map,
-    costmap,
-    std::nullopt,
-    frontier_cache,
-    make_pose(5.0, 5.0),
-    0.0,
-    options);
-  ASSERT_TRUE(accepted_candidate.has_value());
+  ASSERT_TRUE(candidate.has_value());
+  ASSERT_TRUE(candidate->goal_point.has_value());
+  const double dx = candidate->goal_point->first - 1.5;
+  const double dy = candidate->goal_point->second - 1.5;
+  EXPECT_GE(std::hypot(dx, dy), 2.0);
 }
 
 TEST(MrtspOrderingTests, CenterPointTieBreakMatchesSortedCellOrder)
@@ -610,7 +603,6 @@ TEST(MrtspOrderingTests, CenterPointTieBreakMatchesSortedCellOrder)
 
   FrontierSearchOptions options;
   options.min_frontier_size_cells = 1;
-  options.build_navigation_goal_point = false;
 
   const auto candidate = build_frontier_candidate(
     frontier_points,

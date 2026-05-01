@@ -82,6 +82,11 @@ nav_msgs::msg::OccupancyGrid build_grid(int width, int height, int default_value
   return msg;
 }
 
+FrontierCandidate make_frontier(double x, double y, int size = 1)
+{
+  return FrontierCandidate{{x, y}, {x, y}, size};
+}
+
 void set_cell(nav_msgs::msg::OccupancyGrid & msg, int x, int y, int value)
 {
   const int width = static_cast<int>(msg.info.width);
@@ -124,8 +129,8 @@ std::unique_ptr<FrontierExplorerCore> make_preemption_core(std::vector<std::stri
   core->local_costmap_generation = 1;
 
   core->set_goal_state(GoalLifecycleState::ACTIVE);
-  core->active_goal_frontier = PrimitiveFrontier{1.0, 1.0};
-  core->active_goal_frontiers = {PrimitiveFrontier{1.0, 1.0}};
+  core->active_goal_frontier = make_frontier(1.0, 1.0);
+  core->active_goal_frontiers = {make_frontier(1.0, 1.0)};
   core->active_goal_kind = "frontier";
   core->active_goal_sent_time_ns = 0;
   core->current_dispatch_id = 1;
@@ -147,9 +152,9 @@ TEST(PreemptionFlowTests, ReselectionReplacementDispatchesWithoutCancel)
       dispatch_calls += 1;
     };
 
-  FrontierSequence frontier_sequence{PrimitiveFrontier{2.0, 2.0}};
-  core->request_frontier_reselection(frontier_sequence, make_pose(), "preferred", "replacement");
-  core->request_frontier_reselection(frontier_sequence, make_pose(), "preferred", "replacement");
+  FrontierSequence frontier_sequence{make_frontier(2.0, 2.0)};
+  core->request_frontier_reselection(frontier_sequence, make_pose(), "mrtsp", "replacement");
+  core->request_frontier_reselection(frontier_sequence, make_pose(), "mrtsp", "replacement");
 
   EXPECT_EQ(dispatch_calls, 1);
   EXPECT_EQ(fake_handle->cancel_calls, 0);
@@ -195,8 +200,8 @@ TEST(PreemptionFlowTests, ReplacementDebounceTracksSelectedFrontierOnly)
   const FrontierSequence first_sequence{selected_frontier, look_ahead_a};
   const FrontierSequence second_sequence{selected_frontier, look_ahead_b};
 
-  core->request_frontier_reselection(first_sequence, make_pose(), "preferred", "replacement");
-  core->request_frontier_reselection(second_sequence, make_pose(), "preferred", "replacement");
+  core->request_frontier_reselection(first_sequence, make_pose(), "mrtsp", "replacement");
+  core->request_frontier_reselection(second_sequence, make_pose(), "mrtsp", "replacement");
 
   EXPECT_EQ(dispatch_calls, 1);
   EXPECT_EQ(fake_handle->cancel_calls, 0);
@@ -304,9 +309,9 @@ TEST(PreemptionFlowTests, DispatchSkipsBlockedFrontierAndUsesNextSequenceTarget)
     };
 
   const FrontierSequence frontier_sequence{
-    PrimitiveFrontier{1.0, 1.0},
-    PrimitiveFrontier{2.0, 2.0},
-    PrimitiveFrontier{3.0, 3.0},
+    make_frontier(1.0, 1.0),
+    make_frontier(2.0, 2.0),
+    make_frontier(3.0, 3.0),
   };
 
   EXPECT_TRUE(core.send_frontier_goal(frontier_sequence, make_pose(), "Sending frontier goal"));
@@ -318,13 +323,12 @@ TEST(PreemptionFlowTests, DispatchSkipsBlockedFrontierAndUsesNextSequenceTarget)
   ASSERT_EQ(dispatched_request->frontier_sequence.size(), 2U);
   EXPECT_TRUE(core.are_frontiers_equivalent(
     dispatched_request->frontier_sequence.front(),
-    PrimitiveFrontier{2.0, 2.0}));
+    make_frontier(2.0, 2.0)));
 }
 
-TEST(PreemptionFlowTests, MrtspDispatchAdjustsCloseTargetToNearestFarEnoughFreePoint)
+TEST(PreemptionFlowTests, MrtspDispatchAdjustsCloseTargetToClosestFarEnoughFreePoint)
 {
   FrontierExplorerCoreParams params;
-  params.strategy = FrontierStrategy::MRTSP;
   params.frontier_selection_min_distance = 2.0;
 
   FrontierExplorerCore core(params, FrontierExplorerCoreCallbacks{});
@@ -363,6 +367,120 @@ TEST(PreemptionFlowTests, MrtspDispatchAdjustsCloseTargetToNearestFarEnoughFreeP
   EXPECT_NEAR(dispatched_request->goal_pose.pose.position.y, 5.5, 1e-9);
 }
 
+TEST(PreemptionFlowTests, EscapeModeRetriesWithoutMinDistanceFiltersAndBypassesDispatchAdjustment)
+{
+  FrontierExplorerCoreParams params;
+  params.escape_enabled = true;
+  params.frontier_candidate_min_goal_distance_m = 2.0;
+  params.frontier_selection_min_distance = 2.0;
+  params.return_to_start_on_complete = false;
+
+  std::vector<double> observed_min_goal_distances;
+  int dispatch_calls = 0;
+  std::optional<GoalDispatchRequest> dispatched_request;
+
+  FrontierExplorerCoreCallbacks callbacks;
+  callbacks.now_ns = []() {return int64_t{5'000'000'000};};
+  callbacks.get_current_pose = []() {
+      return std::optional<geometry_msgs::msg::Pose>(make_pose(5.1, 5.5));
+    };
+  callbacks.wait_for_action_server = [](double) {return true;};
+  callbacks.dispatch_goal_request = [&dispatch_calls, &dispatched_request](
+    const GoalDispatchRequest & request) {
+      dispatch_calls += 1;
+      dispatched_request = request;
+    };
+  callbacks.frontier_search = [&observed_min_goal_distances](
+    const geometry_msgs::msg::Pose &,
+    const OccupancyGrid2d &,
+    const OccupancyGrid2d &,
+    const std::optional<OccupancyGrid2d> &,
+    double min_goal_distance,
+    bool)
+    {
+      observed_min_goal_distances.push_back(min_goal_distance);
+      FrontierSearchResult result;
+      result.robot_map_cell = {5, 5};
+      if (min_goal_distance > 0.0) {
+        return result;
+      }
+      result.frontiers = {make_frontier(5.0, 5.0, 8)};
+      return result;
+    };
+
+  FrontierExplorerCore core(params, callbacks);
+  auto map_msg = build_grid(20, 20, 0);
+  auto costmap_msg = build_grid(20, 20, 100);
+  set_cell(costmap_msg, 5, 5, 0);
+  set_cell(costmap_msg, 7, 5, 0);
+  core.map = OccupancyGrid2d(map_msg);
+  core.costmap = OccupancyGrid2d(costmap_msg);
+  core.map_generation = 1;
+  core.costmap_generation = 1;
+
+  core.try_send_next_goal();
+
+  ASSERT_EQ(observed_min_goal_distances.size(), 2U);
+  EXPECT_DOUBLE_EQ(observed_min_goal_distances[0], 2.0);
+  EXPECT_DOUBLE_EQ(observed_min_goal_distances[1], 0.0);
+  ASSERT_EQ(dispatch_calls, 1);
+  ASSERT_TRUE(dispatched_request.has_value());
+  EXPECT_NE(dispatched_request->description.find("escape"), std::string::npos);
+  EXPECT_NEAR(dispatched_request->goal_pose.pose.position.x, 5.0, 1e-9);
+  EXPECT_NEAR(dispatched_request->goal_pose.pose.position.y, 5.0, 1e-9);
+}
+
+TEST(PreemptionFlowTests, EscapeModeDisabledDoesNotRetryWithoutMinDistanceFilters)
+{
+  FrontierExplorerCoreParams params;
+  params.escape_enabled = false;
+  params.frontier_candidate_min_goal_distance_m = 2.0;
+  params.return_to_start_on_complete = false;
+
+  std::vector<double> observed_min_goal_distances;
+  int dispatch_calls = 0;
+
+  FrontierExplorerCoreCallbacks callbacks;
+  callbacks.now_ns = []() {return int64_t{5'000'000'000};};
+  callbacks.get_current_pose = []() {
+      return std::optional<geometry_msgs::msg::Pose>(make_pose(5.1, 5.5));
+    };
+  callbacks.wait_for_action_server = [](double) {return true;};
+  callbacks.dispatch_goal_request = [&dispatch_calls](const GoalDispatchRequest &) {
+      dispatch_calls += 1;
+    };
+  callbacks.frontier_search = [&observed_min_goal_distances](
+    const geometry_msgs::msg::Pose &,
+    const OccupancyGrid2d &,
+    const OccupancyGrid2d &,
+    const std::optional<OccupancyGrid2d> &,
+    double min_goal_distance,
+    bool)
+    {
+      observed_min_goal_distances.push_back(min_goal_distance);
+      FrontierSearchResult result;
+      result.robot_map_cell = {5, 5};
+      if (min_goal_distance <= 0.0) {
+        result.frontiers = {make_frontier(5.0, 5.0, 8)};
+      }
+      return result;
+    };
+
+  FrontierExplorerCore core(params, callbacks);
+  auto map_msg = build_grid(20, 20, 0);
+  auto costmap_msg = build_grid(20, 20, 0);
+  core.map = OccupancyGrid2d(map_msg);
+  core.costmap = OccupancyGrid2d(costmap_msg);
+  core.map_generation = 1;
+  core.costmap_generation = 1;
+
+  core.try_send_next_goal();
+
+  ASSERT_EQ(observed_min_goal_distances.size(), 1U);
+  EXPECT_DOUBLE_EQ(observed_min_goal_distances[0], 2.0);
+  EXPECT_EQ(dispatch_calls, 0);
+}
+
 TEST(PreemptionFlowTests, FrontierCostStatusUsesConfiguredOccupancyThreshold)
 {
   FrontierExplorerCoreParams params;
@@ -374,7 +492,7 @@ TEST(PreemptionFlowTests, FrontierCostStatusUsesConfiguredOccupancyThreshold)
   set_cell(costmap_msg, 1, 1, 55);
   core.costmap = OccupancyGrid2d(costmap_msg);
 
-  const auto target = std::optional<FrontierLike>{PrimitiveFrontier{1.0, 1.0}};
+  const auto target = std::optional<FrontierLike>{make_frontier(1.0, 1.0)};
   EXPECT_FALSE(core.frontier_cost_status(target).has_value());
 
   set_cell(costmap_msg, 1, 1, 60);
@@ -420,8 +538,8 @@ TEST(PreemptionFlowTests, PreemptionReplacementDispatchesImmediatelyWhenSettleEn
   core.costmap_generation = 1;
   core.local_costmap_generation = 1;
   core.set_goal_state(GoalLifecycleState::ACTIVE);
-  core.active_goal_frontier = PrimitiveFrontier{1.0, 1.0};
-  core.active_goal_frontiers = {PrimitiveFrontier{1.0, 1.0}};
+  core.active_goal_frontier = make_frontier(1.0, 1.0);
+  core.active_goal_frontiers = {make_frontier(1.0, 1.0)};
   core.active_goal_kind = "frontier";
   core.active_goal_sent_time_ns = 0;
   core.current_dispatch_id = 1;
@@ -1102,11 +1220,11 @@ TEST(PreemptionFlowTests, ReplacementQueueStaysSingleWithLatestSequence)
   core->replacement_required_hits = 1;
   core->callbacks.wait_for_action_server = [](double) {return false;};
 
-  FrontierSequence first{PrimitiveFrontier{2.0, 2.0}};
-  FrontierSequence second{PrimitiveFrontier{3.0, 3.0}};
+  FrontierSequence first{make_frontier(2.0, 2.0)};
+  FrontierSequence second{make_frontier(3.0, 3.0)};
 
-  core->request_frontier_reselection(first, make_pose(), "preferred", "first");
-  core->request_frontier_reselection(second, make_pose(), "preferred", "second");
+  core->request_frontier_reselection(first, make_pose(), "mrtsp", "first");
+  core->request_frontier_reselection(second, make_pose(), "mrtsp", "second");
 
   EXPECT_TRUE(core->are_frontier_sequences_equivalent(core->pending_frontier_sequence, second));
 }

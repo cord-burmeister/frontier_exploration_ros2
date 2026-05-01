@@ -238,7 +238,7 @@ bool FrontierSearchContext::is_cost_blocked(
       map_x < 0 || map_y < 0 ||
       map_x >= costmap->getSizeX() || map_y >= costmap->getSizeY())
     {
-      return search_options_.out_of_bounds_costmap_is_blocked;
+      return true;
     }
     return costmap->getCost(map_x, map_y) >= search_options_.occ_threshold;
   }
@@ -248,7 +248,7 @@ bool FrontierSearchContext::is_cost_blocked(
   int cost_x = 0;
   int cost_y = 0;
   if (!costmap->worldToMapNoThrow(world.first, world.second, cost_x, cost_y)) {
-    return search_options_.out_of_bounds_costmap_is_blocked;
+    return true;
   }
   return costmap->getCost(cost_x, cost_y) >= search_options_.occ_threshold;
 }
@@ -321,7 +321,7 @@ std::optional<std::pair<double, double>> choose_accessible_frontier_goal(
     return std::nullopt;
   }
 
-  // When a minimum robot distance is requested, prefer the nearest far-enough goal.
+  // When a minimum robot distance is requested, prefer the closest far-enough goal.
   const bool apply_min_distance = current_pose.has_value() && min_robot_distance > 0.0;
   const double min_robot_distance_sq = min_robot_distance * min_robot_distance;
 
@@ -345,7 +345,7 @@ std::optional<std::pair<double, double>> choose_accessible_frontier_goal(
       if ((robot_dx * robot_dx) + (robot_dy * robot_dy) >= min_robot_distance_sq &&
         centroid_distance < best_far_distance)
       {
-        // Keep nearest point to centroid among points outside the robot-distance exclusion radius.
+        // Keep the closest point to the centroid among points outside the robot-distance exclusion radius.
         best_far_distance = centroid_distance;
         best_far_point = world;
       }
@@ -390,7 +390,8 @@ std::optional<FrontierCandidate> build_frontier_candidate(
     context = &(*owned_context);
   }
 
-  // Frontier geometry is computed once here so both nearest and MRTSP can share one candidate model.
+  // Frontier geometry is computed once here so dispatch, preemption, and MRTSP scoring
+  // all share one candidate model.
   std::vector<std::pair<double, double>> frontier_world_points;
   frontier_world_points.reserve(new_frontier.size());
   double centroid_sum_x = 0.0;
@@ -452,29 +453,6 @@ std::optional<FrontierCandidate> build_frontier_candidate(
   const double min_goal_distance_sq =
     effective_candidate_min_goal_distance * effective_candidate_min_goal_distance;
 
-  if (!options.build_navigation_goal_point) {
-    if (apply_min_goal_distance) {
-      const double dx = center_point.first - current_pose.position.x;
-      const double dy = center_point.second - current_pose.position.y;
-      const double robot_distance_sq = (dx * dx) + (dy * dy);
-      if (robot_distance_sq < min_goal_distance_sq) {
-        // MRTSP reference filters candidates using center-point distance to the robot.
-        return std::nullopt;
-      }
-    }
-
-    return FrontierCandidate{
-      frontier_centroid,
-      center_point,
-      center_cell,
-      start_cell,
-      start_world_point,
-      std::nullopt,
-      static_cast<int>(new_frontier.size()),
-      visible_reveal_bounds,
-    };
-  }
-
   context->begin_candidate_accessible_scan();
 
   std::optional<std::pair<double, double>> best_any_goal_point;
@@ -499,9 +477,7 @@ std::optional<FrontierCandidate> build_frontier_candidate(
       }
 
       if (
-        context->global_cost_blocked(neighbor->mapX, neighbor->mapY) ||
-        (options.use_local_costmap_for_frontier_eligibility &&
-        context->local_cost_blocked(neighbor->mapX, neighbor->mapY)))
+        context->global_cost_blocked(neighbor->mapX, neighbor->mapY))
       {
         // A blocked neighbor cannot be used as frontier goal candidate.
         return;
@@ -558,7 +534,7 @@ std::pair<int, int> find_free_with_cache(
   const OccupancyGrid2d & occupancy_map,
   FrontierCache & frontier_cache)
 {
-  // If robot starts in unknown/occupied cell, recover nearest reachable free seed for BFS.
+  // If robot starts in unknown/occupied cell, recover the closest reachable free seed for BFS.
   std::deque<FrontierPoint *> bfs;
   bfs.push_back(frontier_cache.getPoint(mx, my));
 
@@ -567,7 +543,7 @@ std::pair<int, int> find_free_with_cache(
     bfs.pop_front();
 
     if (occupancy_map.getCost(location->mapX, location->mapY) == static_cast<int>(OccupancyGrid2d::CostValues::FreeSpace)) {
-      // First free hit in BFS radius is the nearest by grid distance.
+      // First free hit in BFS radius is the closest by grid distance.
       return {location->mapX, location->mapY};
     }
 
@@ -601,7 +577,7 @@ FrontierSearchResult get_frontier(
   FrontierSearchContext search_context(occupancy_map, costmap, local_costmap, options);
 
   const auto [mx, my] = occupancy_map.worldToMap(current_pose.position.x, current_pose.position.y);
-  // If robot projects into unknown space, find_free_with_cache nudges start to nearest free seed.
+  // If robot projects into unknown space, find_free_with_cache nudges start to the closest free seed.
   const auto free_point = find_free_with_cache(mx, my, occupancy_map, frontier_cache);
   FrontierPoint * start = frontier_cache.getPoint(free_point.first, free_point.second);
   // Seed map BFS from a guaranteed free (or best effort) cell.
@@ -788,14 +764,6 @@ bool is_frontier_point(
 
     if (context->global_cost_blocked(neighbor->mapX, neighbor->mapY)) {
       // Any blocked adjacent cell disqualifies this frontier candidate.
-      blocked_neighbor = true;
-      return;
-    }
-
-    if (
-      context->search_options_.use_local_costmap_for_frontier_eligibility &&
-      context->local_cost_blocked(neighbor->mapX, neighbor->mapY))
-    {
       blocked_neighbor = true;
       return;
     }

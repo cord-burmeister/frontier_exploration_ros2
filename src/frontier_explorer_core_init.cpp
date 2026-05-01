@@ -101,8 +101,6 @@ FrontierExplorerCore::FrontierExplorerCore(
     0.0,
     params.goal_preemption_lidar_min_reveal_length_m);
 
-  escape_active = params.escape_enabled;
-
   // Defensive defaults keep unit tests and partial hosts from crashing.
   if (!callbacks.now_ns) {
     callbacks.now_ns = []() {return int64_t{0};};
@@ -187,14 +185,9 @@ bool FrontierExplorerCore::debug_outputs_enabled() const
   return callbacks.debug_outputs_enabled();
 }
 
-bool FrontierExplorerCore::mrtsp_enabled() const
-{
-  return params.strategy == FrontierStrategy::MRTSP;
-}
-
 bool FrontierExplorerCore::frontier_map_optimization_enabled() const
 {
-  return mrtsp_enabled() || params.frontier_map_optimization_enabled;
+  return params.frontier_map_optimization_enabled;
 }
 
 FrontierSearchOptions FrontierExplorerCore::frontier_search_options() const
@@ -203,9 +196,6 @@ FrontierSearchOptions FrontierExplorerCore::frontier_search_options() const
   options.occ_threshold = params.occ_threshold;
   options.min_frontier_size_cells = params.min_frontier_size_cells;
   options.candidate_min_goal_distance_m = params.frontier_candidate_min_goal_distance_m;
-  options.use_local_costmap_for_frontier_eligibility = !mrtsp_enabled();
-  options.out_of_bounds_costmap_is_blocked = mrtsp_enabled();
-  options.build_navigation_goal_point = true;
   return options;
 }
 

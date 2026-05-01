@@ -18,9 +18,6 @@ frontier_explorer:
     autostart: true
     control_service_enabled: true
 
-    # Frontier selection strategy. Use "mrtsp" for MRTSP ordering or "nearest" for distance policy.
-    strategy: mrtsp
-
     # MRTSP solver mode. "dp" scores all optimized frontiers, keeps the best candidate pool,
     # and searches a bounded sequence; "greedy" traverses the full MRTSP matrix one step at a time.
     mrtsp_solver: dp
