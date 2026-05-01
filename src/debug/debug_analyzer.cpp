@@ -204,6 +204,7 @@ void annotate_decision_map_cache(
   snapshot.decision_map_total_chunks = decision_map_status.total_chunks;
   snapshot.decision_map_dirty_chunks = decision_map_status.dirty_chunks;
   snapshot.decision_map_geometry_changed = decision_map_status.geometry_changed;
+  snapshot.decision_map_geometry_transition = decision_map_status.geometry_transition;
   snapshot.decision_map_config_changed = decision_map_status.config_changed;
   snapshot.decision_map_output_reused = decision_map_status.reused_existing_output;
   snapshot.decision_map_output_changed = decision_map_status.output_changed;
@@ -219,7 +220,10 @@ void annotate_decision_map_cache(
       DecisionMapChunkDebugCell cell;
       cell.chunk_x = chunk_x;
       cell.chunk_y = chunk_y;
-      if (decision_map_status.geometry_changed) {
+      if (
+        decision_map_status.geometry_changed &&
+        decision_map_status.geometry_transition == DecisionMapGeometryTransition::FullRebuildFallback)
+      {
         cell.state = DecisionMapChunkDebugState::GeometryReset;
       } else if (
         chunk_index < decision_map_workspace.dirty_chunk_flags.size() &&

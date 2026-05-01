@@ -72,8 +72,8 @@ visualization_msgs::msg::MarkerArray make_dp_pruning_markers(
   const DebugMarkerConfig & config);
 
 // Decision-map chunk-cache overlay. Green borders mean raw chunk cache hit,
-// red borders mean that chunk was rebuilt, and yellow borders mark geometry
-// reset/full rebuild events such as map growth or origin changes.
+// red borders mean that chunk was rebuilt, and yellow borders mark true
+// full-rebuild fallbacks when geometry reuse was not possible.
 visualization_msgs::msg::MarkerArray make_decision_map_chunk_cache_markers(
   const FrontierDebugSnapshot & snapshot,
   const DebugMarkerConfig & config);

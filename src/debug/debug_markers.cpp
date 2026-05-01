@@ -265,6 +265,20 @@ std_msgs::msg::ColorRGBA mrtsp_rank_color(std::size_t rank, std::size_t total)
   return rgba(0.15F + (0.85F * t), 0.9F - (0.55F * t), 0.25F, 0.9F);
 }
 
+std::string geometry_transition_label(DecisionMapGeometryTransition transition)
+{
+  switch (transition) {
+    case DecisionMapGeometryTransition::SameGeometry:
+      return "same";
+    case DecisionMapGeometryTransition::OverlapReuse:
+      return "overlap_reuse";
+    case DecisionMapGeometryTransition::FullRebuildFallback:
+      return "full_rebuild";
+  }
+
+  return "unknown";
+}
+
 }  // namespace
 
 visualization_msgs::msg::MarkerArray make_raw_frontier_markers(
@@ -649,9 +663,13 @@ visualization_msgs::msg::MarkerArray make_decision_map_chunk_cache_markers(
           << "\nhit=" << hit_count
           << " dirty=" << dirty_count
           << " reset=" << reset_count
+          << "\ngeometry=" << geometry_transition_label(snapshot.decision_map_geometry_transition)
           << "\noutput=" << (snapshot.decision_map_output_reused ? "hit" : "miss")
           << " changed=" << (snapshot.decision_map_output_changed ? "yes" : "no");
-  if (snapshot.decision_map_geometry_changed) {
+  if (
+    snapshot.decision_map_geometry_changed &&
+    snapshot.decision_map_geometry_transition == DecisionMapGeometryTransition::FullRebuildFallback)
+  {
     summary << "\ngeometry_reset=yes";
   } else if (snapshot.decision_map_config_changed) {
     summary << "\nconfig_rebuild=yes";

@@ -104,7 +104,8 @@ struct DecisionMapResult
 enum class DecisionMapGeometryTransition : uint8_t
 {
   SameGeometry = 0,
-  GrowthReuse = 1,
+  OverlapReuse = 1,
+  GrowthReuse = OverlapReuse,
   FullRebuildFallback = 2,
 };
 
@@ -136,12 +137,9 @@ struct DecisionMapWorkspace
   double last_build_sigma_r{30.0};
   int last_build_dilation_radius_cells{1};
 
-  // Images for the current raw input, staging copy, and optimization outputs.
+  // Images for the current raw input and optimization outputs.
   PaperImage raw_image;
-  PaperImage raw_scratch_image;
-  std::vector<float> filtered_image;
   PaperImage threshold_image;
-  PaperImage optimized_image;
   PaperImage dilation_scratch;
 
   // Cached raw occupancy values and chunk metadata for chunk-aware dirty detection.

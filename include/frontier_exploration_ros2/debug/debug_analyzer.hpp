@@ -117,6 +117,8 @@ struct FrontierDebugSnapshot
   std::size_t decision_map_total_chunks{0};
   std::size_t decision_map_dirty_chunks{0};
   bool decision_map_geometry_changed{false};
+  DecisionMapGeometryTransition decision_map_geometry_transition{
+    DecisionMapGeometryTransition::FullRebuildFallback};
   bool decision_map_config_changed{false};
   bool decision_map_output_reused{false};
   bool decision_map_output_changed{false};
