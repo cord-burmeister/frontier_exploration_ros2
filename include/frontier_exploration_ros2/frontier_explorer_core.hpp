@@ -110,8 +110,7 @@ struct FrontierExplorerCoreParams
   double goal_preemption_lidar_yaw_offset_deg{0.0};
   bool post_goal_settle_enabled{true};
   double post_goal_min_settle{0.80};
-  int post_goal_required_map_updates{3};
-  int post_goal_stable_updates{2};
+  double map_processing_rate_hz{1.0};
   bool return_to_start_on_complete{true};
   std::string all_frontiers_suppressed_behavior{"stay"};
   bool frontier_suppression_enabled{false};
@@ -163,6 +162,9 @@ public:
   void occupancyGridCallback(const OccupancyGrid2d & map_msg);
   void costmapCallback(const OccupancyGrid2d & map_msg);
   void localCostmapCallback(const OccupancyGrid2d & map_msg);
+  void ingestRawMapUpdate(const OccupancyGrid2d & map_msg);
+  void handleUrgentRawMapUpdateForActiveGoal();
+  void processPendingMapUpdate();
 
   [[nodiscard]] bool frontier_map_optimization_enabled() const;
   [[nodiscard]] FrontierSearchOptions frontier_search_options() const;
@@ -192,8 +194,8 @@ public:
   void start_post_goal_settle();
   void wait_for_next_map_refresh();
   void clear_post_goal_wait_state();
-  void observe_post_goal_settle_update(bool refresh_frontier_signature = true);
   bool post_goal_settle_ready() const;
+  [[nodiscard]] bool active_frontier_goal_in_progress() const;
 
   FrontierSelectionResult select_frontier(
     const FrontierSequence & frontiers,
@@ -239,6 +241,10 @@ public:
 
   void reset_replacement_candidate_tracking();
   bool has_stable_replacement_candidate(const FrontierSequence & frontier_sequence);
+  [[nodiscard]] std::optional<std::pair<double, double>> active_goal_target_point() const;
+  FrontierLike frontier_with_goal_point(
+    const FrontierLike & frontier,
+    const std::pair<double, double> & goal_point) const;
   // Reprojects the active goal into a hypothetical sensor pose and estimates the
   // still-visible frontier length from there; nullopt means "fall back to snapshot logic".
   std::optional<double> active_goal_visible_reveal_length() const;
@@ -417,12 +423,9 @@ public:
 
   // Post-goal settle and map-refresh gating state.
   bool awaiting_map_refresh{false};
-  bool map_updated{false};
   bool post_goal_settle_active{false};
   std::optional<int64_t> post_goal_settle_started_at_ns;
-  int post_goal_map_updates_seen{0};
-  int post_goal_stable_update_count{0};
-  std::optional<FrontierSignature> post_goal_last_frontier_signature;
+  bool decision_map_dirty{false};
 
   // Escape and return-to-start behavior flags.
   bool return_to_start_started{false};

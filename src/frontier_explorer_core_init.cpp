@@ -34,15 +34,8 @@ FrontierExplorerCore::FrontierExplorerCore(
 {
   params.all_frontiers_suppressed_behavior = detail::normalize_suppressed_behavior(
     params.all_frontiers_suppressed_behavior);
-  // Clamp settle configuration to safe minimums only when the settle gate is enabled.
-  if (params.post_goal_settle_enabled) {
-    params.post_goal_min_settle = std::max(0.0, params.post_goal_min_settle);
-    params.post_goal_required_map_updates = std::max(1, params.post_goal_required_map_updates);
-    params.post_goal_stable_updates = std::max(1, params.post_goal_stable_updates);
-    params.post_goal_required_map_updates = std::max(
-      params.post_goal_required_map_updates,
-      params.post_goal_stable_updates);
-  }
+  params.post_goal_min_settle = std::max(0.0, params.post_goal_min_settle);
+  params.map_processing_rate_hz = std::max(0.0, params.map_processing_rate_hz);
   params.frontier_suppression_attempt_threshold = std::max(
     1,
     params.frontier_suppression_attempt_threshold);

@@ -685,18 +685,9 @@ TEST(FrontierSnapshotTests, SnapshotInvalidatesOnMinGoalDistanceChange)
   EXPECT_EQ(call_count, 2);
 }
 
-TEST(FrontierSnapshotTests, ObservePostGoalSettleReusesSnapshotSignatureWithoutRecompute)
+TEST(FrontierSnapshotTests, GetFrontierSnapshotRefreshesDirtyDecisionMapBeforeCacheLookup)
 {
   auto core = make_snapshot_core();
-  core->awaiting_map_refresh = true;
-  core->post_goal_settle_active = true;
-  core->post_goal_map_updates_seen = 0;
-  core->post_goal_stable_update_count = 0;
-  core->post_goal_last_frontier_signature.reset();
-  core->params.frontier_candidate_min_goal_distance_m = 0.3;
-  core->callbacks.get_current_pose = []() {
-      return std::optional<geometry_msgs::msg::Pose>(make_pose(1.0, 1.0));
-    };
 
   int call_count = 0;
   core->callbacks.frontier_search = [&call_count](
@@ -715,49 +706,27 @@ TEST(FrontierSnapshotTests, ObservePostGoalSettleReusesSnapshotSignatureWithoutR
     };
 
   core->get_frontier_snapshot(make_pose(1.0, 1.0), 0.3);
-  core->observe_post_goal_settle_update();
+  core->ingestRawMapUpdate(OccupancyGrid2d(build_grid(20, 20, 0)));
+  ASSERT_TRUE(core->decision_map_dirty);
+  core->get_frontier_snapshot(make_pose(1.0, 1.0), 0.3);
 
   EXPECT_EQ(call_count, 1);
-  EXPECT_EQ(core->post_goal_map_updates_seen, 1);
-  EXPECT_EQ(core->post_goal_stable_update_count, 1);
+  EXPECT_FALSE(core->decision_map_dirty);
 }
 
-TEST(FrontierSnapshotTests, ObservePostGoalSettleCanAdvanceFromCostmapTicksWithoutRecompute)
+TEST(FrontierSnapshotTests, PostGoalSettleReadyDependsOnlyOnElapsedTime)
 {
   auto core = make_snapshot_core();
+  core->params.post_goal_settle_enabled = true;
+  core->params.post_goal_min_settle = 0.5;
   core->awaiting_map_refresh = true;
   core->post_goal_settle_active = true;
-  core->map_updated = false;
-  core->post_goal_map_updates_seen = 0;
-  core->post_goal_stable_update_count = 0;
-  core->post_goal_last_frontier_signature.reset();
+  core->post_goal_settle_started_at_ns = core->callbacks.now_ns();
 
-  const auto seed = core->get_frontier_snapshot(make_pose(1.0, 1.0), 0.3);
-  core->frontier_snapshot = seed;
+  EXPECT_FALSE(core->post_goal_settle_ready());
 
-  int refresh_calls = 0;
-  core->callbacks.frontier_search = [&refresh_calls](
-    const geometry_msgs::msg::Pose &,
-    const OccupancyGrid2d &,
-    const OccupancyGrid2d &,
-    const std::optional<OccupancyGrid2d> &,
-    double,
-    bool)
-    {
-      refresh_calls += 1;
-      FrontierSearchResult result;
-      result.frontiers = {dummy_frontier()};
-      result.robot_map_cell = {1, 1};
-      return result;
-    };
-
-  core->observe_post_goal_settle_update(false);
-  core->observe_post_goal_settle_update(false);
-
-  EXPECT_TRUE(core->map_updated);
-  EXPECT_EQ(core->post_goal_map_updates_seen, 2);
-  EXPECT_EQ(core->post_goal_stable_update_count, 2);
-  EXPECT_EQ(refresh_calls, 0);
+  core->post_goal_settle_started_at_ns = core->callbacks.now_ns() - 600'000'000;
+  EXPECT_TRUE(core->post_goal_settle_ready());
 }
 
 TEST(FrontierSelectionTests, SelectFrontierSequenceReturnsFullMrtspOrdering)

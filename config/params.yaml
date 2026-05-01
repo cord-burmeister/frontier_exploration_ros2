@@ -1,9 +1,9 @@
 frontier_explorer:
   ros__parameters:
     # Topics and action
-    map_topic: map
-    costmap_topic: global_costmap/costmap
-    local_costmap_topic: local_costmap/costmap
+    map_topic: /map
+    costmap_topic: /global_costmap/costmap
+    local_costmap_topic: /local_costmap/costmap
     navigate_to_pose_action_name: navigate_to_pose
 
     # Frames
@@ -11,12 +11,12 @@ frontier_explorer:
     robot_base_frame: base_footprint
 
     # Visualization
-    frontier_marker_topic: explore/frontiers
-    selected_frontier_topic: explore/selected_frontier
-    optimized_map_topic: explore/optimized_map
+    frontier_marker_topic: /explore/frontiers
+    selected_frontier_topic: /explore/selected_frontier
+    optimized_map_topic: /explore/optimized_map
     frontier_marker_scale: 0.15
     autostart: true
-    control_service_enabled: true
+    control_service_enabled: false
 
     # MRTSP solver mode. "dp" scores all optimized frontiers, keeps the best candidate pool,
     # and searches a bounded sequence; "greedy" traverses the full MRTSP matrix one step at a time.
@@ -44,9 +44,9 @@ frontier_explorer:
     weight_gain_ws: 1.0
     max_linear_speed_vmax: 0.5
     max_angular_speed_wmax: 1.0
-    frontier_candidate_min_goal_distance_m: 0.0
+    frontier_candidate_min_goal_distance_m: 0.5
     sensor_effective_range_m: 1.5
-    occ_threshold: 60 # Increase this value if exploration miss small & low value areas
+    occ_threshold: 50
 
     min_frontier_size_cells: 5
     sigma_s: 2.0
@@ -55,7 +55,7 @@ frontier_explorer:
 
     # Exploration behavior
     escape_enabled: true
-    return_to_start_on_complete: true
+    return_to_start_on_complete: false
 
     frontier_selection_min_distance: 0.5
     frontier_visit_tolerance: 0.30
@@ -63,8 +63,7 @@ frontier_explorer:
     # Post Goal
     post_goal_settle_enabled: false
     post_goal_min_settle: 0.80
-    post_goal_required_map_updates: 3
-    post_goal_stable_updates: 2
+    map_processing_rate_hz: 1.0
 
     # Preemption
     goal_preemption_enabled: true
@@ -82,8 +81,8 @@ frontier_explorer:
     # Frontier Suspression
     frontier_suppression_enabled: false
 
-    all_frontiers_suppressed_behavior: stay
-    frontier_suppression_attempt_threshold: 3
+    all_frontiers_suppressed_behavior: return_to_start
+    frontier_suppression_attempt_threshold: 1
     frontier_suppression_base_size_m: 1.0
     frontier_suppression_expansion_size_m: 0.5
     frontier_suppression_timeout_s: 90.0
@@ -94,5 +93,5 @@ frontier_explorer:
     frontier_suppression_max_regions: 64
 
     # Optional completion event for external integrations.
-    completion_event_enabled: false
+    completion_event_enabled: true
     completion_event_topic: exploration_complete

@@ -253,7 +253,7 @@ FrontierSnapshot FrontierExplorerCore::get_frontier_snapshot(
   const geometry_msgs::msg::Pose & current_pose,
   double min_goal_distance)
 {
-  if (!decision_map.has_value()) {
+  if (!decision_map.has_value() || decision_map_dirty) {
     if (!map.has_value()) {
       throw std::logic_error("Decision map is not initialized");
     }
@@ -339,101 +339,31 @@ FrontierSnapshot FrontierExplorerCore::get_frontier_snapshot(
 
 void FrontierExplorerCore::start_post_goal_settle()
 {
-  // After a succeeded frontier goal, wait for map/costmap stabilization before choosing next goal.
   awaiting_map_refresh = true;
-  map_updated = false;
   post_goal_settle_active = true;
   post_goal_settle_started_at_ns = callbacks.now_ns();
-  post_goal_map_updates_seen = 0;
-  post_goal_stable_update_count = 0;
-  post_goal_last_frontier_signature.reset();
 }
 
 void FrontierExplorerCore::wait_for_next_map_refresh()
 {
-  // Non-success terminal states use a simpler "wait for fresh map" gate.
-  awaiting_map_refresh = true;
-  map_updated = false;
-  post_goal_settle_active = false;
-  post_goal_settle_started_at_ns.reset();
-  post_goal_map_updates_seen = 0;
-  post_goal_stable_update_count = 0;
-  post_goal_last_frontier_signature.reset();
+  start_post_goal_settle();
 }
 
 void FrontierExplorerCore::clear_post_goal_wait_state()
 {
-  // Resets both simple wait-for-refresh and full settle state.
   awaiting_map_refresh = false;
-  map_updated = false;
   post_goal_settle_active = false;
   post_goal_settle_started_at_ns.reset();
-  post_goal_map_updates_seen = 0;
-  post_goal_stable_update_count = 0;
-  post_goal_last_frontier_signature.reset();
-}
-
-void FrontierExplorerCore::observe_post_goal_settle_update(bool refresh_frontier_signature)
-{
-  if (!awaiting_map_refresh || !post_goal_settle_active) {
-    // Nothing to observe when settle is inactive.
-    return;
-  }
-
-  map_updated = true;
-  // Count every update event participating in settle decision.
-  post_goal_map_updates_seen += 1;
-
-  // Stable signature counting prevents immediate re-goaling on transient map changes.
-  const auto update_stable_signature = [this](const FrontierSignature & signature) {
-      if (post_goal_last_frontier_signature.has_value() &&
-        signature == *post_goal_last_frontier_signature)
-      {
-        post_goal_stable_update_count += 1;
-      } else {
-        post_goal_last_frontier_signature = signature;
-        post_goal_stable_update_count = 1;
-      }
-    };
-
-  if (!refresh_frontier_signature) {
-    // Costmap/local updates can still advance settle using the last known signature.
-    if (frontier_snapshot.has_value()) {
-      update_stable_signature(frontier_snapshot->signature);
-    }
-    return;
-  }
-
-  const auto current_pose = callbacks.get_current_pose();
-  if (!current_pose.has_value() || !map.has_value() || !costmap.has_value()) {
-    // Signature refresh requires full search prerequisites.
-    return;
-  }
-
-  FrontierSnapshot snapshot;
-  try {
-    snapshot = get_frontier_snapshot(*current_pose, params.frontier_candidate_min_goal_distance_m);
-  } catch (const std::out_of_range &) {
-    return;
-  }
-
-  update_stable_signature(snapshot.signature);
 }
 
 bool FrontierExplorerCore::post_goal_settle_ready() const
 {
-  // Readiness predicate:
-  //   map_updated
-  //   AND elapsed >= post_goal_min_settle
-  //   AND post_goal_map_updates_seen >= post_goal_required_map_updates
-  //   AND post_goal_stable_update_count >= post_goal_stable_updates
-  if (!map_updated) {
-    return false;
+  if (!awaiting_map_refresh) {
+    return true;
   }
 
   if (!post_goal_settle_active) {
-    // In simple refresh mode, one map update is enough.
-    return true;
+    return !params.post_goal_settle_enabled;
   }
 
   if (!post_goal_settle_started_at_ns.has_value()) {
@@ -442,18 +372,8 @@ bool FrontierExplorerCore::post_goal_settle_ready() const
 
   const double elapsed = static_cast<double>(callbacks.now_ns() - *post_goal_settle_started_at_ns) / 1e9;
   if (elapsed < params.post_goal_min_settle) {
-    // Minimum dwell time not reached yet.
     return false;
   }
-
-  if (post_goal_map_updates_seen < params.post_goal_required_map_updates) {
-    return false;
-  }
-
-  if (post_goal_stable_update_count < params.post_goal_stable_updates) {
-    return false;
-  }
-
   return true;
 }
 
