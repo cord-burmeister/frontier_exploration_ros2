@@ -101,6 +101,7 @@ void expect_frontier_results_equal(
   for (std::size_t i = 0; i < expected.frontiers.size(); ++i) {
     EXPECT_EQ(expected.frontiers[i].centroid, actual.frontiers[i].centroid);
     EXPECT_EQ(expected.frontiers[i].goal_point, actual.frontiers[i].goal_point);
+    EXPECT_EQ(expected.frontiers[i].robot_center_distance_m, actual.frontiers[i].robot_center_distance_m);
     EXPECT_EQ(expected.frontiers[i].size, actual.frontiers[i].size);
   }
 }
@@ -152,6 +153,10 @@ TEST(FrontierSearchTests, FrontierExtractionWhenRobotIsOnFreeCell)
   auto result = get_frontier(make_pose(4.0, 4.0), occupancy_map, costmap);
 
   EXPECT_FALSE(result.frontiers.empty());
+  for (const auto & frontier : result.frontiers) {
+    ASSERT_TRUE(frontier.robot_center_distance_m.has_value());
+    EXPECT_GE(*frontier.robot_center_distance_m, 0.0);
+  }
 }
 
 TEST(FrontierSearchTests, FrontierExtractionWhenRobotStartsUnknownUsesFindFree)
@@ -528,6 +533,7 @@ TEST(FrontierSnapshotTests, DebugOutputsDoNotChangeSnapshotOrSelection)
     const auto & quiet_candidate = quiet_snapshot.frontiers[i];
     EXPECT_EQ(debug_candidate.centroid, quiet_candidate.centroid);
     EXPECT_EQ(debug_candidate.goal_point, quiet_candidate.goal_point);
+    EXPECT_EQ(debug_candidate.robot_center_distance_m, quiet_candidate.robot_center_distance_m);
     EXPECT_EQ(debug_candidate.size, quiet_candidate.size);
   }
 
@@ -540,6 +546,7 @@ TEST(FrontierSnapshotTests, DebugOutputsDoNotChangeSnapshotOrSelection)
   const auto & quiet_selected = *quiet_selection.frontier;
   EXPECT_EQ(debug_selected.centroid, quiet_selected.centroid);
   EXPECT_EQ(debug_selected.goal_point, quiet_selected.goal_point);
+  EXPECT_EQ(debug_selected.robot_center_distance_m, quiet_selected.robot_center_distance_m);
   EXPECT_EQ(debug_selected.size, quiet_selected.size);
 }
 

@@ -427,6 +427,7 @@ std::optional<FrontierCandidate> build_frontier_candidate(
 
   std::pair<int, int> center_cell = {new_frontier.front()->mapX, new_frontier.front()->mapY};
   std::pair<double, double> center_point = frontier_world_points.front();
+  FrontierPoint * center_frontier_point = new_frontier.front();
   double center_distance_sq = std::numeric_limits<double>::infinity();
   constexpr double kCenterTieEpsilon = 1e-12;
   for (std::size_t i = 0; i < new_frontier.size(); ++i) {
@@ -442,7 +443,13 @@ std::optional<FrontierCandidate> build_frontier_candidate(
       center_distance_sq = distance_sq;
       center_cell = candidate_cell;
       center_point = frontier_world_points[i];
+      center_frontier_point = new_frontier[i];
     }
+  }
+
+  std::optional<double> robot_center_distance_m;
+  if (center_frontier_point->robot_distance_m >= 0.0) {
+    robot_center_distance_m = center_frontier_point->robot_distance_m;
   }
 
   const auto start_world_point = context->world_point(start_cell.first, start_cell.second);
@@ -519,6 +526,7 @@ std::optional<FrontierCandidate> build_frontier_candidate(
     *goal_point,
     static_cast<int>(new_frontier.size()),
     visible_reveal_bounds,
+    robot_center_distance_m,
   };
 }
 
@@ -582,6 +590,8 @@ FrontierSearchResult get_frontier(
   FrontierPoint * start = frontier_cache.getPoint(free_point.first, free_point.second);
   // Seed map BFS from a guaranteed free (or best effort) cell.
   start->classification = classification_flag(PointClassification::MapOpen);
+  start->robot_distance_m = 0.0;
+  const double resolution_m = occupancy_map.map().info.resolution;
 
   std::deque<FrontierPoint *> map_point_queue;
   map_point_queue.push_back(start);
@@ -640,6 +650,9 @@ FrontierSearchResult get_frontier(
               !has_classification(neighbor, PointClassification::FrontierClosed) &&
               !has_classification(neighbor, PointClassification::MapClosed))
             {
+              if (candidate->robot_distance_m >= 0.0) {
+                neighbor->robot_distance_m = candidate->robot_distance_m + resolution_m;
+              }
               // FrontierOpen marks queued frontier candidates.
               set_classification(neighbor, PointClassification::FrontierOpen);
               frontier_queue.push_back(neighbor);
@@ -691,6 +704,9 @@ FrontierSearchResult get_frontier(
         });
 
         if (has_free_neighbor) {
+          if (point->robot_distance_m >= 0.0) {
+            neighbor->robot_distance_m = point->robot_distance_m + resolution_m;
+          }
           // MapOpen marks node eligible for future map-queue expansion.
           set_classification(neighbor, PointClassification::MapOpen);
           map_point_queue.push_back(neighbor);

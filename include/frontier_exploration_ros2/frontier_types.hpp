@@ -181,6 +181,7 @@ struct FrontierPoint
   int classification{0};
   int mapX{0};
   int mapY{0};
+  double robot_distance_m{-1.0};
 
   FrontierPoint() = default;
   FrontierPoint(int x, int y)
@@ -234,6 +235,7 @@ public:
       point.classification = 0;
       point.mapX = x;
       point.mapY = y;
+      point.robot_distance_m = -1.0;
     }
     return &points_[idx];
   }
@@ -296,7 +298,8 @@ struct FrontierCandidate
     std::pair<double, double> start_world_point_in,
     std::optional<std::pair<double, double>> goal_point_in,
     int size_in,
-    std::optional<CellBounds> visible_reveal_bounds_in = std::nullopt)
+    std::optional<CellBounds> visible_reveal_bounds_in = std::nullopt,
+    std::optional<double> robot_center_distance_m_in = std::nullopt)
   : centroid(std::move(centroid_in)),
     center_point(std::move(center_point_in)),
     center_cell(std::move(center_cell_in)),
@@ -304,7 +307,8 @@ struct FrontierCandidate
     start_world_point(std::move(start_world_point_in)),
     goal_point(std::move(goal_point_in)),
     size(size_in),
-    visible_reveal_bounds(std::move(visible_reveal_bounds_in))
+    visible_reveal_bounds(std::move(visible_reveal_bounds_in)),
+    robot_center_distance_m(std::move(robot_center_distance_m_in))
   {
   }
 
@@ -324,6 +328,8 @@ struct FrontierCandidate
   int size{0};
   // Conservative local bounds used to limit target-pose visible-reveal estimation around this cluster.
   std::optional<CellBounds> visible_reveal_bounds;
+  // Approximate robot-to-center frontier distance accumulated during BFS traversal.
+  std::optional<double> robot_center_distance_m;
 };
 
 using FrontierLike = FrontierCandidate;

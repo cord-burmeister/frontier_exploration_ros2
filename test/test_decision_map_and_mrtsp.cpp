@@ -620,5 +620,110 @@ TEST(MrtspOrderingTests, CenterPointTieBreakMatchesSortedCellOrder)
   EXPECT_EQ(candidate->center_point, (std::pair<double, double>{2.5, 1.5}));
 }
 
+TEST(MrtspOrderingTests, CandidateCarriesApproxRobotCenterDistanceFromSelectedCenterFrontier)
+{
+  auto map_msg = build_grid(8, 8, 0);
+  auto costmap_msg = build_grid(8, 8, 0);
+  const OccupancyGrid2d occupancy_map(map_msg);
+  const OccupancyGrid2d costmap(costmap_msg);
+
+  FrontierCache frontier_cache(8, 8);
+  FrontierPoint * point_a = frontier_cache.getPoint(3, 2);
+  FrontierPoint * point_b = frontier_cache.getPoint(2, 3);
+  FrontierPoint * point_c = frontier_cache.getPoint(1, 2);
+  FrontierPoint * point_d = frontier_cache.getPoint(2, 1);
+  point_a->robot_distance_m = 4.0;
+  point_b->robot_distance_m = 3.0;
+  point_c->robot_distance_m = 2.0;
+  point_d->robot_distance_m = 1.0;
+
+  std::vector<FrontierPoint *> frontier_points{point_a, point_b, point_c, point_d};
+
+  FrontierSearchOptions options;
+  options.min_frontier_size_cells = 1;
+
+  const auto candidate = build_frontier_candidate(
+    frontier_points,
+    {3, 2},
+    occupancy_map,
+    costmap,
+    std::nullopt,
+    frontier_cache,
+    make_pose(0.0, 0.0),
+    0.0,
+    options);
+
+  ASSERT_TRUE(candidate.has_value());
+  ASSERT_TRUE(candidate->robot_center_distance_m.has_value());
+  EXPECT_EQ(candidate->center_cell, (std::pair<int, int>{2, 1}));
+  EXPECT_DOUBLE_EQ(*candidate->robot_center_distance_m, 1.0);
+}
+
+TEST(MrtspOrderingTests, StartCostUsesApproxRobotCenterDistanceForPathAndTranslation)
+{
+  constexpr double kHalfPi = 1.57079632679489661923;
+  const FrontierCandidate candidate{
+    {0.0, 1.0},
+    {0.0, 1.0},
+    {0, 1},
+    {0, 1},
+    {0.0, 1.0},
+    std::make_optional(std::pair<double, double>{0.0, 1.0}),
+    4,
+    std::nullopt,
+    5.0};
+
+  RobotState robot_state;
+  robot_state.position = {0.0, 0.0};
+  robot_state.yaw = 0.0;
+
+  const double path_cost = initial_frontier_path_cost(
+    robot_state.position,
+    candidate,
+    candidate.start_world_point,
+    0.0);
+  const double motion_time_cost = lower_bound_time_cost(
+    robot_state,
+    candidate.center_point,
+    candidate.robot_center_distance_m,
+    2.0,
+    1.0);
+
+  EXPECT_DOUBLE_EQ(path_cost, 5.0);
+  EXPECT_NEAR(motion_time_cost, 2.5 + kHalfPi, 1e-9);
+}
+
+TEST(MrtspOrderingTests, StartCostFallsBackToEuclideanWithoutApproxRobotCenterDistance)
+{
+  constexpr double kHalfPi = 1.57079632679489661923;
+  const FrontierCandidate candidate{
+    {0.0, 1.0},
+    {0.0, 1.0},
+    {0, 1},
+    {0, 1},
+    {0.0, 1.0},
+    std::make_optional(std::pair<double, double>{0.0, 1.0}),
+    4};
+
+  RobotState robot_state;
+  robot_state.position = {0.0, 0.0};
+  robot_state.yaw = 0.0;
+
+  const double path_cost = initial_frontier_path_cost(
+    robot_state.position,
+    candidate,
+    candidate.start_world_point,
+    0.0);
+  const double motion_time_cost = lower_bound_time_cost(
+    robot_state,
+    candidate.center_point,
+    candidate.robot_center_distance_m,
+    2.0,
+    1.0);
+
+  EXPECT_DOUBLE_EQ(path_cost, 1.0);
+  EXPECT_NEAR(motion_time_cost, 0.5 + kHalfPi, 1e-9);
+}
+
 }  // namespace
 }  // namespace frontier_exploration_ros2

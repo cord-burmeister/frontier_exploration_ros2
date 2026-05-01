@@ -93,6 +93,7 @@ void annotate_mrtsp_candidates(
     debug_candidate.mrtsp_motion_time_cost = lower_bound_time_cost(
       robot_state,
       candidate.center_point,
+      candidate.robot_center_distance_m,
       config.max_linear_speed_vmax,
       config.max_angular_speed_wmax);
     debug_candidate.mrtsp_start_cost = compute_mrtsp_start_cost(
