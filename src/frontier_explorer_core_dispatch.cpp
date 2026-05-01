@@ -308,10 +308,10 @@ double FrontierExplorerCore::frontier_snapshot_min_goal_distance_for_pose(
     return params.frontier_candidate_min_goal_distance_m;
   }
 
-  const auto completed_reference = frontier_reference_point(*distance_completed_frontier);
+  const auto completed_goal = frontier_position(*distance_completed_frontier);
   const double completed_distance = std::hypot(
-    completed_reference.first - current_pose.position.x,
-    completed_reference.second - current_pose.position.y);
+    completed_goal.first - current_pose.position.x,
+    completed_goal.second - current_pose.position.y);
   if (completed_distance > params.goal_preemption_complete_if_within_m) {
     distance_completed_frontier.reset();
     return params.frontier_candidate_min_goal_distance_m;
@@ -378,10 +378,10 @@ void FrontierExplorerCore::consider_preempt_active_goal(const std::string & trig
     active_goal_blocked_reason.reset();
   }
 
-  const auto active_goal_reference = frontier_reference_point(*active_goal_frontier);
+  const auto active_goal_point = frontier_position(*active_goal_frontier);
   const double active_goal_distance = std::hypot(
-    active_goal_reference.first - current_pose->position.x,
-    active_goal_reference.second - current_pose->position.y);
+    active_goal_point.first - current_pose->position.x,
+    active_goal_point.second - current_pose->position.y);
   std::optional<double> visible_reveal_length;
   // Near-goal completion is independent from visible-gain preemption; it is a close-enough guard.
   const bool revealed_completion_distance_reached =
@@ -808,7 +808,7 @@ bool FrontierExplorerCore::send_frontier_goal(
     dispatch_sequence.push_back(frontier_sequence[index]);
   }
 
-  const auto goal_pose = build_goal_pose(
+  const auto goal_pose = build_dispatch_goal_pose(
     dispatch_sequence.front(),
     current_pose);
   if (debug_outputs_enabled()) {

@@ -610,6 +610,112 @@ geometry_msgs::msg::PoseStamped FrontierExplorerCore::build_goal_pose(
   return goal_pose;
 }
 
+geometry_msgs::msg::PoseStamped FrontierExplorerCore::build_dispatch_goal_pose(
+  const FrontierLike & target_frontier,
+  const geometry_msgs::msg::Pose & current_pose) const
+{
+  const auto goal_pose_for_point =
+    [this, &current_pose](const std::pair<double, double> & target_point) {
+      geometry_msgs::msg::PoseStamped goal_pose;
+      goal_pose.header.frame_id = params.global_frame;
+      goal_pose.pose.position.x = target_point.first;
+      goal_pose.pose.position.y = target_point.second;
+      goal_pose.pose.orientation = current_pose.orientation;
+      const double to_target_dx = target_point.first - current_pose.position.x;
+      const double to_target_dy = target_point.second - current_pose.position.y;
+      if (std::hypot(to_target_dx, to_target_dy) > 0.05) {
+        goal_pose.pose.orientation = detail::quaternion_from_yaw(std::atan2(to_target_dy, to_target_dx));
+      }
+      return goal_pose;
+    };
+
+  const auto fallback_goal_pose = build_goal_pose(target_frontier, current_pose);
+  if (!mrtsp_enabled() || params.frontier_selection_min_distance <= 0.0 || !map.has_value()) {
+    return fallback_goal_pose;
+  }
+
+  const auto target_point = frontier_position(target_frontier);
+  const double distance_to_robot = std::hypot(
+    target_point.first - current_pose.position.x,
+    target_point.second - current_pose.position.y);
+  if (distance_to_robot >= params.frontier_selection_min_distance) {
+    return fallback_goal_pose;
+  }
+
+  int target_map_x = 0;
+  int target_map_y = 0;
+  if (!map->worldToMapNoThrow(target_point.first, target_point.second, target_map_x, target_map_y)) {
+    return fallback_goal_pose;
+  }
+
+  const auto is_dispatch_cell_eligible = [this, &current_pose](int map_x, int map_y) {
+      if (map->getCost(map_x, map_y) != static_cast<int>(OccupancyGrid2d::CostValues::FreeSpace)) {
+        return false;
+      }
+
+      const auto world_point = map->mapToWorld(map_x, map_y);
+      const double robot_distance = std::hypot(
+        world_point.first - current_pose.position.x,
+        world_point.second - current_pose.position.y);
+      if (robot_distance < params.frontier_selection_min_distance) {
+        return false;
+      }
+
+      const auto local_cost = world_point_cost(local_costmap, world_point);
+      if (local_cost.has_value() && *local_cost >= params.occ_threshold) {
+        return false;
+      }
+
+      const auto global_cost = world_point_cost(costmap, world_point);
+      if (global_cost.has_value() && *global_cost >= params.occ_threshold) {
+        return false;
+      }
+
+      return true;
+    };
+
+  const int max_radius = std::max(map->getSizeX(), map->getSizeY());
+  for (int radius = 0; radius < max_radius; ++radius) {
+    std::optional<std::pair<double, double>> best_world_point;
+    double best_distance_sq = std::numeric_limits<double>::infinity();
+
+    const auto consider_cell = [&](int map_x, int map_y) {
+        if (map_x < 0 || map_y < 0 || map_x >= map->getSizeX() || map_y >= map->getSizeY()) {
+          return;
+        }
+        if (!is_dispatch_cell_eligible(map_x, map_y)) {
+          return;
+        }
+
+        const auto world_point = map->mapToWorld(map_x, map_y);
+        const double target_distance_sq = squared_distance(world_point, target_point);
+        if (target_distance_sq < best_distance_sq) {
+          best_distance_sq = target_distance_sq;
+          best_world_point = world_point;
+        }
+      };
+
+    if (radius == 0) {
+      consider_cell(target_map_x, target_map_y);
+    } else {
+      for (int map_x = target_map_x - radius; map_x <= target_map_x + radius; ++map_x) {
+        consider_cell(map_x, target_map_y - radius);
+        consider_cell(map_x, target_map_y + radius);
+      }
+      for (int map_y = target_map_y - radius + 1; map_y <= target_map_y + radius - 1; ++map_y) {
+        consider_cell(target_map_x - radius, map_y);
+        consider_cell(target_map_x + radius, map_y);
+      }
+    }
+
+    if (best_world_point.has_value()) {
+      return goal_pose_for_point(*best_world_point);
+    }
+  }
+
+  return fallback_goal_pose;
+}
+
 std::vector<geometry_msgs::msg::PoseStamped> FrontierExplorerCore::build_goal_pose_sequence(
   const FrontierSequence & target_frontiers,
   const geometry_msgs::msg::Pose & current_pose) const

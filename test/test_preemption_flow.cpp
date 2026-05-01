@@ -321,6 +321,48 @@ TEST(PreemptionFlowTests, DispatchSkipsBlockedFrontierAndUsesNextSequenceTarget)
     PrimitiveFrontier{2.0, 2.0}));
 }
 
+TEST(PreemptionFlowTests, MrtspDispatchAdjustsCloseTargetToNearestFarEnoughFreePoint)
+{
+  FrontierExplorerCoreParams params;
+  params.strategy = FrontierStrategy::MRTSP;
+  params.frontier_selection_min_distance = 2.0;
+
+  FrontierExplorerCore core(params, FrontierExplorerCoreCallbacks{});
+  auto map_msg = build_grid(20, 20, 0);
+  auto costmap_msg = build_grid(20, 20, 100);
+  set_cell(costmap_msg, 5, 5, 0);
+  set_cell(costmap_msg, 7, 5, 0);
+  core.map = OccupancyGrid2d(map_msg);
+  core.costmap = OccupancyGrid2d(costmap_msg);
+
+  int dispatch_calls = 0;
+  std::optional<GoalDispatchRequest> dispatched_request;
+  core.callbacks.wait_for_action_server = [](double) {return true;};
+  core.callbacks.dispatch_goal_request = [&dispatch_calls, &dispatched_request](
+    const GoalDispatchRequest & request) {
+      dispatch_calls += 1;
+      dispatched_request = request;
+    };
+
+  const FrontierSequence frontier_sequence{
+    FrontierCandidate{
+      {5.0, 5.0},
+      {5.0, 5.0},
+      {5, 5},
+      {5, 5},
+      {5.0, 5.0},
+      std::nullopt,
+      8},
+  };
+
+  EXPECT_TRUE(core.send_frontier_goal(frontier_sequence, make_pose(5.1, 5.5), "Sending frontier goal"));
+
+  ASSERT_EQ(dispatch_calls, 1);
+  ASSERT_TRUE(dispatched_request.has_value());
+  EXPECT_NEAR(dispatched_request->goal_pose.pose.position.x, 7.5, 1e-9);
+  EXPECT_NEAR(dispatched_request->goal_pose.pose.position.y, 5.5, 1e-9);
+}
+
 TEST(PreemptionFlowTests, FrontierCostStatusUsesConfiguredOccupancyThreshold)
 {
   FrontierExplorerCoreParams params;
@@ -693,7 +735,7 @@ TEST(PreemptionFlowTests, CompletionDistanceTreatsNearFrontierAsCompleteWithVisi
   core->active_goal_frontier = FrontierCandidate{{4.0, 5.0}, {3.0, 5.0}, 8};
   core->active_goal_frontiers = {*core->active_goal_frontier};
   core->callbacks.get_current_pose = []() {
-      return std::optional<geometry_msgs::msg::Pose>(make_pose(3.9, 5.0));
+      return std::optional<geometry_msgs::msg::Pose>(make_pose(3.1, 5.0));
     };
 
   auto map_msg = build_grid(12, 12, -1);
@@ -747,7 +789,7 @@ TEST(PreemptionFlowTests, CompletionDistanceIsDisabledAtZero)
   core->active_goal_frontier = FrontierCandidate{{4.0, 5.0}, {3.0, 5.0}, 8};
   core->active_goal_frontiers = {*core->active_goal_frontier};
   core->callbacks.get_current_pose = []() {
-      return std::optional<geometry_msgs::msg::Pose>(make_pose(3.9, 5.0));
+      return std::optional<geometry_msgs::msg::Pose>(make_pose(3.1, 5.0));
     };
 
   auto map_msg = build_grid(12, 12, -1);
@@ -796,7 +838,7 @@ TEST(PreemptionFlowTests, CompletionDistanceTriggersWhenVisibleGainPreemptionDis
   core->active_goal_frontier = FrontierCandidate{{4.0, 5.0}, {3.0, 5.0}, 8};
   core->active_goal_frontiers = {*core->active_goal_frontier};
   core->callbacks.get_current_pose = []() {
-      return std::optional<geometry_msgs::msg::Pose>(make_pose(3.9, 5.0));
+      return std::optional<geometry_msgs::msg::Pose>(make_pose(3.1, 5.0));
     };
 
   int frontier_search_calls = 0;
@@ -826,6 +868,33 @@ TEST(PreemptionFlowTests, CompletionDistanceTriggersWhenVisibleGainPreemptionDis
 
   EXPECT_EQ(frontier_search_calls, 0);
   EXPECT_EQ(dispatch_calls, 0);
+  EXPECT_EQ(fake_handle->cancel_calls, 1);
+  EXPECT_TRUE(core->distance_completed_frontier.has_value());
+}
+
+TEST(PreemptionFlowTests, CompletionDistanceUsesDispatchedGoalPointRatherThanCentroid)
+{
+  auto core = make_preemption_core();
+  auto fake_handle = std::make_shared<FakeGoalHandle>();
+  core->goal_handle = fake_handle;
+  core->params.goal_preemption_enabled = false;
+  core->params.goal_skip_on_blocked_goal = false;
+  core->params.goal_preemption_complete_if_within_m = 0.25;
+  core->active_goal_frontier = FrontierCandidate{
+    {5.0, 5.0},
+    {4.0, 5.0},
+    {4, 5},
+    {4, 5},
+    {4.0, 5.0},
+    std::pair<double, double>{4.0, 5.0},
+    8};
+  core->active_goal_frontiers = {*core->active_goal_frontier};
+  core->callbacks.get_current_pose = []() {
+      return std::optional<geometry_msgs::msg::Pose>(make_pose(4.1, 5.0));
+    };
+
+  core->consider_preempt_active_goal("map");
+
   EXPECT_EQ(fake_handle->cancel_calls, 1);
   EXPECT_TRUE(core->distance_completed_frontier.has_value());
 }
@@ -872,6 +941,45 @@ TEST(PreemptionFlowTests, CompletionDistanceDoesNotReselectWhenOutsideThresholdA
   EXPECT_EQ(fake_handle->cancel_calls, 0);
 }
 
+TEST(PreemptionFlowTests, CompletionDistanceRedispatchGuardUsesCompletedGoalPointRatherThanCentroid)
+{
+  auto core = make_preemption_core();
+  core->params.goal_preemption_complete_if_within_m = 0.25;
+  core->params.frontier_candidate_min_goal_distance_m = 0.0;
+  core->set_goal_state(GoalLifecycleState::IDLE);
+  core->distance_completed_frontier = FrontierCandidate{
+    {5.0, 5.0},
+    {4.0, 5.0},
+    {4, 5},
+    {4, 5},
+    {4.0, 5.0},
+    std::pair<double, double>{4.0, 5.0},
+    8};
+  core->callbacks.get_current_pose = []() {
+      return std::optional<geometry_msgs::msg::Pose>(make_pose(4.1, 5.0));
+    };
+
+  double observed_min_goal_distance = -1.0;
+  core->callbacks.frontier_search = [&observed_min_goal_distance](
+    const geometry_msgs::msg::Pose &,
+    const OccupancyGrid2d &,
+    const OccupancyGrid2d &,
+    const std::optional<OccupancyGrid2d> &,
+    double min_goal_distance,
+    bool)
+    {
+      observed_min_goal_distance = min_goal_distance;
+      FrontierSearchResult result;
+      result.robot_map_cell = {0, 0};
+      return result;
+    };
+
+  core->try_send_next_goal();
+
+  EXPECT_DOUBLE_EQ(observed_min_goal_distance, 0.25);
+  EXPECT_TRUE(core->distance_completed_frontier.has_value());
+}
+
 TEST(PreemptionFlowTests, CompletionDistanceCancelsWithoutReplacementAndAvoidsRedispatch)
 {
   auto core = make_preemption_core();
@@ -884,7 +992,7 @@ TEST(PreemptionFlowTests, CompletionDistanceCancelsWithoutReplacementAndAvoidsRe
   core->active_goal_frontier = FrontierCandidate{{4.0, 5.0}, {3.0, 5.0}, 8};
   core->active_goal_frontiers = {*core->active_goal_frontier};
   core->callbacks.get_current_pose = []() {
-      return std::optional<geometry_msgs::msg::Pose>(make_pose(3.9, 5.0));
+      return std::optional<geometry_msgs::msg::Pose>(make_pose(3.1, 5.0));
     };
 
   int completion_calls = 0;
