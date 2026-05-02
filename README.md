@@ -1672,12 +1672,12 @@ The packaged launch path uses `config/params.yaml` as its baseline parameter fil
 
 ### Visualization and Debug Outputs
 
-| Parameter                           | Type     | Default | Description                                                  | Notes                                                                                  |
-| ----------------------------------- | -------- | ------- | ------------------------------------------------------------ | -------------------------------------------------------------------------------------- |
-| `autostart`                         | `bool`   | `true`  | Starts exploration automatically when the node comes up      | Set `false` to keep the node in cold idle until a control request                      |
+| Parameter                           | Type     | Default | Description                                                  | Notes                                                                                                                             |
+| ----------------------------------- | -------- | ------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------- |
+| `autostart`                         | `bool`   | `true`  | Starts exploration automatically when the node comes up      | Set `false` to keep the node in cold idle until a control request                                                                 |
 | `control_service_enabled`           | `bool`   | `true`  | Enables the `control_exploration` service                    | If `autostart=false`, the node keeps the service enabled even when this is set `false`; packaged configs override this to `false` |
-| `frontier_marker_scale`             | `double` | `0.15`  | Point marker size for frontier visualization                 | Used by the RViz marker publisher                                                      |
-| `frontier_map_optimization_enabled` | `bool`   | `true`  | Enables decision-map optimization before frontier extraction | Applies directly to the MRTSP-only runtime                                             |
+| `frontier_marker_scale`             | `double` | `0.15`  | Point marker size for frontier visualization                 | Used by the RViz marker publisher                                                                                                 |
+| `frontier_map_optimization_enabled` | `bool`   | `true`  | Enables decision-map optimization before frontier extraction | Applies directly to the MRTSP-only runtime                                                                                        |
 
 ### QoS
 
@@ -1713,33 +1713,33 @@ The packaged launch path uses `config/params.yaml` as its baseline parameter fil
 
 ### Exploration Behavior
 
-| Parameter                                   | Type     | Default | Description                                                                                              | Notes                                                                                                                                                                                                                                                                               |
-| ------------------------------------------- | -------- | ------- | -------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `frontier_candidate_min_goal_distance_m`    | `double` | `0.0`   | Minimum robot-to-candidate distance applied during frontier candidate construction                       | Early search/materialization control used while building reachable dispatch goals; packaged configs override this to `0.5`                                                                                                                                                           |
-| `frontier_selection_min_distance`           | `double` | `0.5`   | Minimum robot-to-goal distance preferred during final dispatch generation                                | If the chosen dispatch point is too close, the code searches for the closest free replacement point that still satisfies this distance when possible                                                                                                                                |
-| `escape_enabled`                            | `bool`   | `false` | Retries frontier search and dispatch without minimum-distance gates when the normal search finds nothing | Intended to break startup lockups when short LiDAR range or SLAM motion thresholds prevent enough initial map opening; packaged example configs enable it explicitly                                                                                                                |
-| `frontier_visit_tolerance`                  | `double` | `0.30`  | Tolerance used for frontier equivalence and already-visited checks                                       | Also drives quantized frontier signatures and suppression attempt bucketing                                                                                                                                                                                                         |
-| `goal_preemption_enabled`                   | `bool`   | `false` | Enables target-pose visible-reveal-gain-based frontier preemption while a frontier goal is active        | Packaged `config/params.yaml` overrides this to `true`, so the default launch path runs with preemption enabled                                                                                                                                                                     |
-| `goal_skip_on_blocked_goal`                 | `bool`   | `false` | Skips the active goal when it becomes blocked                                                            | Switches to another frontier when available; otherwise the blocked goal can be canceled                                                                                                                                                                                             |
-| `goal_preemption_min_interval_s`            | `double` | `2.0`   | Minimum time between visible-reveal-gain preemption attempts                                             | Helps prevent unstable re-goaling; packaged configs override this to `1.0`                                                                                                                                                                                                         |
+| Parameter                                   | Type     | Default | Description                                                                                              | Notes                                                                                                                                                                                                                                                                                                                        |
+| ------------------------------------------- | -------- | ------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `frontier_candidate_min_goal_distance_m`    | `double` | `0.0`   | Minimum robot-to-candidate distance applied during frontier candidate construction                       | Early search/materialization control used while building reachable dispatch goals; packaged configs override this to `0.5`                                                                                                                                                                                                   |
+| `frontier_selection_min_distance`           | `double` | `0.5`   | Minimum robot-to-goal distance preferred during final dispatch generation                                | If the chosen dispatch point is too close, the code searches for the closest free replacement point that still satisfies this distance when possible                                                                                                                                                                         |
+| `escape_enabled`                            | `bool`   | `false` | Retries frontier search and dispatch without minimum-distance gates when the normal search finds nothing | Intended to break startup lockups when short LiDAR range or SLAM motion thresholds prevent enough initial map opening; packaged example configs enable it explicitly                                                                                                                                                         |
+| `frontier_visit_tolerance`                  | `double` | `0.30`  | Tolerance used for frontier equivalence and already-visited checks                                       | Also drives quantized frontier signatures and suppression attempt bucketing                                                                                                                                                                                                                                                  |
+| `goal_preemption_enabled`                   | `bool`   | `false` | Enables target-pose visible-reveal-gain-based frontier preemption while a frontier goal is active        | Packaged `config/params.yaml` overrides this to `true`, so the default launch path runs with preemption enabled                                                                                                                                                                                                              |
+| `goal_skip_on_blocked_goal`                 | `bool`   | `false` | Skips the active goal when it becomes blocked                                                            | Switches to another frontier when available; otherwise the blocked goal can be canceled                                                                                                                                                                                                                                      |
+| `goal_preemption_min_interval_s`            | `double` | `2.0`   | Minimum time between visible-reveal-gain preemption attempts                                             | Helps prevent unstable re-goaling; packaged configs override this to `1.0`                                                                                                                                                                                                                                                   |
 | `goal_preemption_complete_if_within_m`      | `double` | `0.0`   | Treat a near-arrived active frontier as complete                                                         | `0.0` disables this shortcut; works even when visible-reveal-gain preemption is disabled, cancels the active goal when the robot is close enough to the dispatched target, and temporarily raises candidate minimum distance near that completed goal to avoid immediate redispatch; packaged configs override this to `0.5` |
-| `goal_preemption_lidar_range_m`             | `double` | `12.0`  | LiDAR range used by the target-pose visible reveal estimate                                              | Sensor-model parameter for the map-based ray-cast                                                                                                                                                                                                                                   |
-| `goal_preemption_lidar_fov_deg`             | `double` | `360.0` | LiDAR field of view used by the target-pose visible reveal estimate                                      | Use values below `360` for directional sensors                                                                                                                                                                                                                                      |
-| `goal_preemption_lidar_ray_step_deg`        | `double` | `1.0`   | Angular sampling step used by the target-pose LiDAR ray-cast estimate                                    | Smaller steps cost more CPU but resolve narrow structure better                                                                                                                                                                                                                     |
-| `goal_preemption_lidar_min_reveal_length_m` | `double` | `0.5`   | Minimum visible reveal length required to keep the active goal in visible-reveal-gain mode               | Below this threshold, the active goal no longer qualifies to stay in visible-reveal-gain mode                                                                                                                                                                                       |
-| `goal_preemption_lidar_yaw_offset_deg`      | `double` | `0.0`   | Additional yaw offset applied to the target-pose LiDAR heading model                                     | Useful when the effective sensing direction differs from the goal heading model                                                                                                                                                                                                     |
-| `post_goal_settle_enabled`                  | `bool`   | `true`  | Enables a fixed post-goal cooldown before sending the next normal frontier goal                          | Immediate reselection/preemption replacements bypass this cooldown; packaged configs override this to `false`                                                                                                                                                                      |
-| `post_goal_min_settle`                      | `double` | `0.80`  | Minimum time to wait after a normal frontier goal result                                                 | Used only when `post_goal_settle_enabled=true`                                                                                                                                                                                                                                      |
-| `map_processing_rate_hz`                    | `double` | `1.0`   | Maximum `/map` processing rate for decision-map refresh and normal frontier scheduling                   | Set `<= 0.0` to process every map immediately; on first launch the node samples startup `/map` timing and caps the effective rate so it does not exceed the observed source rate; active-goal urgent preemption/completion checks can still react immediately without eagerly refreshing the decision map |
-| `return_to_start_on_complete`               | `bool`   | `true`  | Returns to the recorded start pose after frontier exhaustion                                             | Sends a regular navigation goal back to the saved start pose; packaged configs override this to `false`                                                                                                                                                                            |
-| `all_frontiers_suppressed_behavior`         | `string` | `stay`  | Behavior used when frontiers exist but all detected candidates are temporarily suppressed                | Supported values: `stay`, `return_to_start`; other values are normalized to `stay`; packaged configs override this to `return_to_start`                                                                                                                                            |
+| `goal_preemption_lidar_range_m`             | `double` | `12.0`  | LiDAR range used by the target-pose visible reveal estimate                                              | Sensor-model parameter for the map-based ray-cast                                                                                                                                                                                                                                                                            |
+| `goal_preemption_lidar_fov_deg`             | `double` | `360.0` | LiDAR field of view used by the target-pose visible reveal estimate                                      | Use values below `360` for directional sensors                                                                                                                                                                                                                                                                               |
+| `goal_preemption_lidar_ray_step_deg`        | `double` | `1.0`   | Angular sampling step used by the target-pose LiDAR ray-cast estimate                                    | Smaller steps cost more CPU but resolve narrow structure better                                                                                                                                                                                                                                                              |
+| `goal_preemption_lidar_min_reveal_length_m` | `double` | `0.5`   | Minimum visible reveal length required to keep the active goal in visible-reveal-gain mode               | Below this threshold, the active goal no longer qualifies to stay in visible-reveal-gain mode                                                                                                                                                                                                                                |
+| `goal_preemption_lidar_yaw_offset_deg`      | `double` | `0.0`   | Additional yaw offset applied to the target-pose LiDAR heading model                                     | Useful when the effective sensing direction differs from the goal heading model                                                                                                                                                                                                                                              |
+| `post_goal_settle_enabled`                  | `bool`   | `true`  | Enables a fixed post-goal cooldown before sending the next normal frontier goal                          | Immediate reselection/preemption replacements bypass this cooldown; packaged configs override this to `false`                                                                                                                                                                                                                |
+| `post_goal_min_settle`                      | `double` | `0.80`  | Minimum time to wait after a normal frontier goal result                                                 | Used only when `post_goal_settle_enabled=true`                                                                                                                                                                                                                                                                               |
+| `map_processing_rate_hz`                    | `double` | `1.0`   | Maximum `/map` processing rate for decision-map refresh and normal frontier scheduling                   | Set `<= 0.0` to process every map immediately; on first launch the node samples startup `/map` timing and caps the effective rate so it does not exceed the observed source rate; active-goal urgent preemption/completion checks can still react immediately without eagerly refreshing the decision map                    |
+| `return_to_start_on_complete`               | `bool`   | `true`  | Returns to the recorded start pose after frontier exhaustion                                             | Sends a regular navigation goal back to the saved start pose; packaged configs override this to `false`                                                                                                                                                                                                                      |
+| `all_frontiers_suppressed_behavior`         | `string` | `stay`  | Behavior used when frontiers exist but all detected candidates are temporarily suppressed                | Supported values: `stay`, `return_to_start`; other values are normalized to `stay`; packaged configs override this to `return_to_start`                                                                                                                                                                                      |
 
 ### Frontier Suppression
 
 | Parameter                                     | Type     | Default | Description                                                                  | Notes                                                                                                         |
 | --------------------------------------------- | -------- | ------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
 | `frontier_suppression_enabled`                | `bool`   | `false` | Enables temporary frontier suppression                                       | When disabled, suppression state is not allocated                                                             |
-| `frontier_suppression_attempt_threshold`      | `int`    | `3`     | Failed attempts required before a frontier area is suppressed                | Applied to quantized goal-point attempt records; packaged configs override this to `1`                         |
+| `frontier_suppression_attempt_threshold`      | `int`    | `3`     | Failed attempts required before a frontier area is suppressed                | Applied to quantized goal-point attempt records; packaged configs override this to `1`                        |
 | `frontier_suppression_base_size_m`            | `double` | `1.0`   | Initial side length of a new square suppression region                       | Used when a matured failed attempt is first promoted into a region                                            |
 | `frontier_suppression_expansion_size_m`       | `double` | `0.5`   | Outer ring width used to detect nearby repeated failures and grow a region   | A matured failure in this band doubles the current square size                                                |
 | `frontier_suppression_timeout_s`              | `double` | `90.0`  | Lifetime of suppression records in seconds                                   | Shared TTL for both attempt records and active suppression regions                                            |
@@ -1751,10 +1751,10 @@ The packaged launch path uses `config/params.yaml` as its baseline parameter fil
 
 ### Integration Hooks
 
-| Parameter                  | Type     | Default                | Description                         | Notes                                                      |
-| -------------------------- | -------- | ---------------------- | ----------------------------------- | ---------------------------------------------------------- |
+| Parameter                  | Type     | Default                | Description                         | Notes                                                                                                |
+| -------------------------- | -------- | ---------------------- | ----------------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `completion_event_enabled` | `bool`   | `false`                | Enables completion-event publishing | Publishes once per node lifetime after frontier exhaustion; packaged configs override this to `true` |
-| `completion_event_topic`   | `string` | `exploration_complete` | Topic used for the completion event | Must be non-empty if completion events are enabled         |
+| `completion_event_topic`   | `string` | `exploration_complete` | Topic used for the completion event | Must be non-empty if completion events are enabled                                                   |
 
 <p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
 
@@ -1764,95 +1764,17 @@ The following example is a clean TurtleBot3 Waffle Pi exploration profile derive
 
 ### Example Parameter File
 
-```yaml
-frontier_explorer:
-  ros__parameters:
-    map_topic: /map
-    costmap_topic: /global_costmap/costmap
-    local_costmap_topic: /local_costmap/costmap
-    navigate_to_pose_action_name: navigate_to_pose
-
-    global_frame: map
-    robot_base_frame: base_footprint
-
-    frontier_marker_topic: /explore/frontiers
-    selected_frontier_topic: /explore/selected_frontier
-    optimized_map_topic: /explore/optimized_map
-    frontier_marker_scale: 0.15
-
-    mrtsp_solver: dp
-    dp_solver_candidate_limit: 15
-    dp_planning_horizon: 10
-
-    map_qos_durability: transient_local
-    map_qos_reliability: reliable
-    map_qos_depth: 1
-    map_qos_autodetect_on_startup: false
-    map_qos_autodetect_timeout_s: 2.0
-
-    costmap_qos_reliability: reliable
-    costmap_qos_depth: 10
-    local_costmap_qos_reliability: inherit
-    local_costmap_qos_depth: -1
-
-    frontier_map_optimization_enabled: true
-    sigma_s: 2.0
-    sigma_r: 30.0
-    dilation_kernel_radius_cells: 1
-    sensor_effective_range_m: 1.5
-    weight_distance_wd: 1.0
-    weight_gain_ws: 1.0
-    max_linear_speed_vmax: 0.5
-    max_angular_speed_wmax: 1.0
-    occ_threshold: 60
-    min_frontier_size_cells: 5
-
-    frontier_candidate_min_goal_distance_m: 0.5
-    frontier_selection_min_distance: 0.5
-    escape_enabled: true
-    frontier_visit_tolerance: 0.30
-
-    goal_preemption_enabled: true
-    goal_skip_on_blocked_goal: true
-    goal_preemption_min_interval_s: 1.0
-    goal_preemption_complete_if_within_m: 0.5
-    goal_preemption_lidar_range_m: 12.0
-    goal_preemption_lidar_fov_deg: 360.0
-    goal_preemption_lidar_ray_step_deg: 1.0
-    goal_preemption_lidar_min_reveal_length_m: 0.5
-    goal_preemption_lidar_yaw_offset_deg: 0.0
-
-    post_goal_settle_enabled: false
-    post_goal_min_settle: 0.80
-    map_processing_rate_hz: 1.0
-    return_to_start_on_complete: false
-    all_frontiers_suppressed_behavior: return_to_start
-
-    frontier_suppression_enabled: false
-    frontier_suppression_attempt_threshold: 1
-    frontier_suppression_base_size_m: 1.0
-    frontier_suppression_expansion_size_m: 0.5
-    frontier_suppression_timeout_s: 90.0
-    frontier_suppression_no_progress_timeout_s: 20.0
-    frontier_suppression_progress_epsilon_m: 0.05
-    frontier_suppression_startup_grace_period_s: 15.0
-    frontier_suppression_max_attempt_records: 256
-    frontier_suppression_max_regions: 64
-
-    completion_event_enabled: true
-    completion_event_topic: exploration_complete
-```
-
-### Example Parameter File With Short Explanations
-
 > [!NOTE]
 > Please use correct parameters for your specific environment and robot specifications.
 >
-> Most of the problems are caused by issues in your Nav2 or SLAM setup. Always check those first.
+> Make sure topics are correct, LiDAR or Depth sensor range is correct, min_distance values are correct for your robot's radius.
+> You can tweak MRTSP scoring values to find best combination for your environment.
 
 ```yaml
 frontier_explorer:
   ros__parameters:
+    # --------------- TOPICS --------------- #
+
     # Occupancy grid topic used to compute frontiers.
     map_topic: /map
 
@@ -1874,31 +1796,19 @@ frontier_explorer:
     # MarkerArray topic used for frontier visualization in RViz.
     frontier_marker_topic: /explore/frontiers
 
-    # Pose topic used to publish the selected frontier target for debugging.
+    # Pose topic used to publish the currently selected frontier target for debugging.
     selected_frontier_topic: /explore/selected_frontier
 
     # OccupancyGrid topic used to publish the optimized decision map for debugging.
     optimized_map_topic: /explore/optimized_map
 
+    # Requires `completion_event_enabled: true`
+    completion_event_topic: exploration_complete
+
     # Marker size for frontier visualization.
     frontier_marker_scale: 0.15
 
-    # Start exploration immediately at launch.
-    autostart: true
-
-    # Keep the optional runtime control service available for manual stop/start flows.
-    control_service_enabled: false
-
-    # Use bounded-horizon Dynamic Programming for the MRTSP route order.
-    # Set this to greedy for simple one-step-at-a-time matrix traversal.
-    mrtsp_solver: dp
-
-    # Number of scored frontier candidates kept for DP route search.
-    dp_solver_candidate_limit: 15
-
-    # Number of frontier visits evaluated inside the candidate pool.
-    # This is route depth, not the number of candidates considered.
-    dp_planning_horizon: 10
+    # --------------- QoS --------------- #
 
     # Map QoS profile selection.
     map_qos_durability: transient_local
@@ -1907,7 +1817,7 @@ frontier_explorer:
 
     # Optional startup-only map durability autodetect helper.
     map_qos_autodetect_on_startup: false
-    map_qos_autodetect_timeout_s: 2.0
+    map_qos_autodetect_timeout_s: 5.0
 
     # Costmap QoS profile selection (durability is fixed volatile in code).
     costmap_qos_reliability: reliable
@@ -1915,8 +1825,66 @@ frontier_explorer:
     local_costmap_qos_reliability: inherit
     local_costmap_qos_depth: -1
 
+    # --------------- GENERAL --------------- #
+
+    # Refresh Rate of the package.
+    # `0.5` is recommended. Use `1.0` if your robot is very fast.
+    # Use `0.25` if your robot is slow and you want lowest CPU usage.
+    map_processing_rate_hz: 0.5
+
+    # Start exploration immediately at launch.
+    autostart: true
+
+    # Keep the optional runtime control service available for manual stop/start flows.
+    control_service_enabled: false
+
+    # Publish a completion event so product-specific integrations can react outside the package.
+    completion_event_enabled: true
+
+    # Allow a farther frontier fallback until the first successful frontier.
+    # Useful if you have a very low range LiDAR or Depth sensor.
+    escape_enabled: true
+
+    # Return to the recorded start pose once no frontiers remain.
+    return_to_start_on_complete: false
+
+    # "dp" optimizes traveling distance by comparing posibilities with limited depth. Increasing efficiency but adds extra CPU overhead.
+    # "greedy" traverses the full MRTSP matrix one step at a time. Cost free.
+    mrtsp_solver: dp
+    # Maximum number of scored frontier candidates passed into the bounded-horizon dp solver.
+    dp_solver_candidate_limit: 12
+    # Number of distinct frontier visits evaluated in the candidate pool.
+    dp_planning_horizon: 8
+
     # Enable decision-map preprocessing for frontier extraction.
+    # Disable only if you are having performance issues. Not a problem for most CPUs.
     frontier_map_optimization_enabled: true
+
+    # Replan while navigating if target-pose visible reveal gain for active goal is exhausted.
+    # Disable if you are having performance issues.
+    goal_preemption_enabled: true
+
+    # Skip the active frontier goal if it becomes blocked.
+    goal_skip_on_blocked_goal: true
+
+    # Enable the post-goal settle delay after a successful frontier goal.
+    # Useful if you want stability over speed. Use if you have slow SLAM & LiDAR configuration.
+    post_goal_settle_enabled: false
+
+    # Minimum seconds to wait before selecting the next frontier after a successful goal.
+    post_goal_min_settle: 1.50
+
+    # Enable temporary suppression for frontiers that repeatedly fail or stall.
+    # Use if you are having issues with SLAM or Nav2.
+    frontier_suppression_enabled: false
+
+    # Behavior when frontiers exist but all of them are temporarily suppressed: stay or return_to_start.
+    # Requires `frontier_suppression_enabled: true`
+    all_frontiers_suppressed_behavior: return_to_start
+
+    # --------------- Algorithm Configuration - Advanced Users --------------- #
+
+    # --------------- MRTSP Scoring --------------- #
 
     # Weight applied to the path-cost term in the frontier cost matrix.
     # Increasing this makes the explorer more distance-sensitive and conservative.
@@ -1942,27 +1910,39 @@ frontier_explorer:
     # Example: low values prefer frontiers already near the current heading.
     max_angular_speed_wmax: 1.0
 
-    # Minimum allowed distance from robot to a selected frontier goal.
-    # This prevents selecting trivially close frontiers that do not move exploration.
-    # Higher values reduce local dithering but can skip useful nearby openings.
-    # Example: 0.0 allows immediate local cleanup, 0.5 forces a small commit distance.
-    frontier_candidate_min_goal_distance_m: 0.5
-
-    # Retry once without minimum-distance filters when no frontier survives startup gating.
-    # This helps short-range LiDAR or SLAM pipelines that need a small initial movement.
-    escape_enabled: true
-
     # Effective sensor range subtracted inside the paper's path-cost term.
     # Larger values reduce the effective traversal penalty between frontiers.
     # This favors frontiers that can reveal more space from farther away.
     # Example: 0.5 makes costs distance-heavy, 2.0 rewards sensing reach more.
+    # Doesn't have to be a real sensor value. Used for distance scoring.
     sensor_effective_range_m: 1.5
+
+    # --------------- Navigation Safety --------------- #
+
+    # Minimum distance before a frontier is considered a valid target.
+    # Used for dispatch not filterization.
+    # Recommended value: 2.5x size of robot's radius
+    frontier_selection_min_distance: 0.8
+
+    # Distance used to treat a frontier region as recently visited.
+    # Use if you are having navigation loops.
+    frontier_visit_tolerance: 0.40
+
+    # --------------- Map Optimization --------------- #
+
+    # Minimum allowed distance from robot to a consider a frontier point as valid.
+    # This prevents selecting trivially close frontiers that do not move exploration.
+    # Higher values reduce local dithering but can skip useful nearby openings.
+    # Example: 0.25 allows immediate local cleanup, 0.5 forces a small commit distance.
+    # Recommended value: 2.5x size of robot's radius
+    frontier_candidate_min_goal_distance_m: 0.8
 
     # Occupancy threshold applied to the global costmap during frontier validation.
     # Neighbor cells at or above this cost are treated as blocked for frontier tests.
     # Lower values make the explorer avoid inflated-cost regions more aggressively.
     # Higher values allow frontiers closer to obstacles and inflation bands.
-    occ_threshold: 60
+    # Value between 0-100. Use higher values if exploration skips very small areas.
+    occ_threshold: 65
 
     # Minimum connected frontier size accepted by WFD, measured in cells.
     # This removes tiny fragments caused by noise or partial unknown boundaries.
@@ -1988,38 +1968,13 @@ frontier_explorer:
     # Example: 0 keeps the map literal, 2 can merge thin fragmented frontiers.
     dilation_kernel_radius_cells: 1
 
-    # Return to the recorded start pose once no frontiers remain.
-    return_to_start_on_complete: false
-
-    # Minimum distance before a frontier is considered a valid target.
-    frontier_selection_min_distance: 0.5
-
-    # Distance used to treat a frontier region as recently visited.
-    frontier_visit_tolerance: 0.30
-
-    # Enable a fixed post-goal cooldown after a normal frontier result.
-    post_goal_settle_enabled: false
-
-    # Minimum seconds to wait before selecting the next frontier after a normal frontier result.
-    post_goal_min_settle: 0.80
-
-    # Maximum /map processing rate for decision-map refresh and normal frontier scheduling.
-    # On first launch, startup /map timing is sampled and the effective rate is capped so
-    # it does not exceed the observed source rate. Set <= 0.0 to process every incoming map immediately.
-    map_processing_rate_hz: 1.0
-
-    # Replan while navigating if target-pose visible reveal gain for active goal is exhausted.
-    goal_preemption_enabled: true
-
-    # Skip the active frontier goal if it becomes blocked.
-    goal_skip_on_blocked_goal: true
+    # --------------- Preemption --------------- #
 
     # Minimum seconds between consecutive goal preemption attempts.
-    goal_preemption_min_interval_s: 1.0
+    goal_preemption_min_interval_s: 2.0
 
-    # Treat the current frontier as complete once the robot is this close to the dispatched target point; 0.0 disables this shortcut.
-    # Use it carefully because large values can end a frontier too early and trigger wrong exploration choices.
-    # Recommended value is 2x size of the robot footprint.
+    # Treat the current frontier as complete once the robot is this close to it; 0.0 disables this shortcut.
+    # This close-enough guard also works when visible-gain preemption is disabled, but obstacle-avoidance-heavy robots should use it carefully because large values can end a frontier too early and trigger wrong exploration choices.
     goal_preemption_complete_if_within_m: 0.50
 
     # LiDAR range in meters used by the map-based visible reveal gate above.
@@ -2037,14 +1992,10 @@ frontier_explorer:
     # Additional yaw offset in degrees applied to the target-pose LiDAR heading model above.
     goal_preemption_lidar_yaw_offset_deg: 0.0
 
-    # Enable temporary suppression for frontiers that repeatedly fail or stall.
-    frontier_suppression_enabled: false
-
-    # Behavior when frontiers exist but all of them are temporarily suppressed: stay or return_to_start.
-    all_frontiers_suppressed_behavior: return_to_start
+    # --------------- Suppression --------------- #
 
     # Number of failed attempts before a frontier area is temporarily suppressed.
-    frontier_suppression_attempt_threshold: 1
+    frontier_suppression_attempt_threshold: 2
 
     # Initial side length in meters for a newly suppressed square area.
     frontier_suppression_base_size_m: 1.0
@@ -2059,7 +2010,7 @@ frontier_explorer:
     frontier_suppression_no_progress_timeout_s: 20.0
 
     # Minimum distance_remaining improvement in meters required to count as progress.
-    frontier_suppression_progress_epsilon_m: 0.05
+    frontier_suppression_progress_epsilon_m: 0.25
 
     # Delay suppression activation during startup so late navigation bring-up does not poison frontier memory.
     frontier_suppression_startup_grace_period_s: 15.0
@@ -2069,10 +2020,6 @@ frontier_explorer:
 
     # Maximum number of active suppressed regions kept in memory.
     frontier_suppression_max_regions: 64
-
-    # Publish a completion event so product-specific integrations can react outside the package.
-    completion_event_enabled: true
-    completion_event_topic: exploration_complete
 ```
 
 ### Example Launch
