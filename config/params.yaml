@@ -135,13 +135,13 @@ frontier_explorer:
     # It does not command the robot directly; it estimates how fast a frontier
     # can be reached when building the first row of the cost matrix.
     # Larger values reduce the time penalty of distant frontiers.
-    max_linear_speed_vmax: 1.0
+    max_linear_speed_vmax: 0.50
 
     # Max angular speed used in the heading-change part of time lower bound.
     # This matters most when candidate frontiers require large initial turns.
     # Larger values reduce the penalty of reorientation-heavy options.
     # Example: low values prefer frontiers already near the current heading.
-    max_angular_speed_wmax: 0.50
+    max_angular_speed_wmax: 1.0
 
     # Effective sensor range subtracted inside the paper's path-cost term.
     # Larger values reduce the effective traversal penalty between frontiers.
