@@ -618,7 +618,6 @@ if (!active_goal_cost_status.has_value()) {
     return;
   }
 
-  // Materialize a single human-readable reason so logs and cancel/reselection flow stay aligned.
   const std::string revealed_preemption_reason = active_goal_cost_status.value_or(
     visible_reveal_gain_exhausted && visible_reveal_length.has_value() ?
     "active frontier revealed and visible reveal gain exhausted at target pose (visible=" +

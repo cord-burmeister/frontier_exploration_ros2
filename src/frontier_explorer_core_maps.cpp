@@ -147,16 +147,20 @@ void FrontierExplorerCore::handleUrgentRawMapUpdateForActiveGoal()
 void FrontierExplorerCore::processPendingMapUpdate()
 {
   const bool had_dirty_map = decision_map_dirty;
-  if (decision_map_dirty) {
-    refresh_decision_map();
-  }
+
+  // if (decision_map_dirty) {
+  //   refresh_decision_map();
+  // }
 
   if (goal_in_progress) {
     if (had_dirty_map && active_goal_kind == "frontier") {
       consider_preempt_active_goal("map");
-    } else if (had_dirty_map && active_goal_kind == "suppressed_return_to_start") {
+    } 
+    
+    else if (had_dirty_map && active_goal_kind == "suppressed_return_to_start") {
       consider_cancel_suppressed_return_to_start();
     }
+
     return;
   }
 
