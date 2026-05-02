@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <array>
 #include <cstddef>
+#include <optional>
 #include <vector>
 
 #include "frontier_exploration_ros2/frontier_types.hpp"
@@ -72,6 +73,17 @@ double initial_frontier_path_cost(
 double lower_bound_time_cost(
   const RobotState & robot_state,
   const std::pair<double, double> & target_point,
+  const std::optional<double> & translation_distance_m,
+  double max_linear_speed_vmax,
+  double max_angular_speed_wmax);
+
+// Computes the exact robot-start row cost used by build_cost_matrix().
+// Candidate pruning calls this helper to stay aligned with MRTSP matrix semantics.
+double compute_mrtsp_start_cost(
+  const FrontierCandidate & candidate,
+  const RobotState & robot_state,
+  const CostWeights & weights,
+  double sensor_effective_range_m,
   double max_linear_speed_vmax,
   double max_angular_speed_wmax);
 

@@ -53,7 +53,7 @@ double angle_wrap(double angle)
 
 double frontier_information_gain(const FrontierCandidate & frontier)
 {
-  // MRTSP currently uses cluster size as the gain proxy.
+  // MRTSP uses cluster size as the gain proxy.
   return static_cast<double>(frontier.size);
 }
 
@@ -78,7 +78,8 @@ double initial_frontier_path_cost(
   double sensor_effective_range_m)
 {
   // Start-node variant of the same frontier transition approximation.
-  const double dm = euclidean(robot_position, target_frontier.center_point);
+  const double dm = target_frontier.robot_center_distance_m.value_or(
+    euclidean(robot_position, target_frontier.center_point));
   const double dn = euclidean(robot_position, target_frontier.centroid);
   const double du = euclidean(target_frontier.center_point, start_world_point);
   const double dv = euclidean(target_frontier.centroid, start_world_point);
@@ -88,19 +89,51 @@ double initial_frontier_path_cost(
 double lower_bound_time_cost(
   const RobotState & robot_state,
   const std::pair<double, double> & target_point,
+  const std::optional<double> & translation_distance_m,
   double max_linear_speed_vmax,
   double max_angular_speed_wmax)
 {
   // Uses the tighter of translation and heading-change bounds for the first dispatch cost.
   const double vmax = std::max(max_linear_speed_vmax, 1e-6);
   const double wmax = std::max(max_angular_speed_wmax, 1e-6);
-  const double distance_term = euclidean(robot_state.position, target_point) / vmax;
+  const double translation_distance = translation_distance_m.value_or(
+    euclidean(robot_state.position, target_point));
+  const double distance_term = translation_distance / vmax;
   const double target_yaw = std::atan2(
     target_point.second - robot_state.position[1],
     target_point.first - robot_state.position[0]);
   const double yaw_delta = std::abs(angle_wrap(target_yaw - robot_state.yaw));
   const double heading_term = std::min(yaw_delta, (2.0 * kPi) - yaw_delta) / wmax;
-  return std::min(distance_term, heading_term);
+  return (distance_term + heading_term);
+}
+
+double compute_mrtsp_start_cost(
+  const FrontierCandidate & candidate,
+  const RobotState & robot_state,
+  const CostWeights & weights,
+  double sensor_effective_range_m,
+  double max_linear_speed_vmax,
+  double max_angular_speed_wmax)
+{
+  // This helper intentionally mirrors the row-zero branch in build_cost_matrix().
+  // Keeping it separate lets pruning evaluate candidates without building a full matrix.
+  const double gain = weights.gain_ws * frontier_information_gain(candidate);
+  if (gain <= 0.0) {
+    return std::numeric_limits<double>::infinity();
+  }
+
+  const double path_cost = initial_frontier_path_cost(
+    robot_state.position,
+    candidate,
+    candidate.start_world_point,
+    sensor_effective_range_m);
+  const double motion_time_cost = lower_bound_time_cost(
+    robot_state,
+    candidate.center_point,
+    candidate.robot_center_distance_m,
+    max_linear_speed_vmax,
+    max_angular_speed_wmax);
+  return ((weights.distance_wd * path_cost) / gain) + (motion_time_cost / std::sqrt(gain));
 }
 
 MrtspCostMatrix build_cost_matrix(
@@ -136,16 +169,11 @@ MrtspCostMatrix build_cost_matrix(
 
       if (row == 0U) {
         // The first step also pays a lower-bound motion-time term from the robot pose.
-        const double path_cost = initial_frontier_path_cost(
-          robot_state.position,
+        matrix.values[row * matrix.dimension + column] = compute_mrtsp_start_cost(
           target_frontier,
-          target_frontier.start_world_point,
-          sensor_effective_range_m);
-        matrix.values[row * matrix.dimension + column] =
-          ((weights.distance_wd * path_cost) / gain) +
-          lower_bound_time_cost(
           robot_state,
-          target_frontier.center_point,
+          weights,
+          sensor_effective_range_m,
           max_linear_speed_vmax,
           max_angular_speed_wmax);
       } else {
