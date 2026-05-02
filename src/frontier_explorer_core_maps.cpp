@@ -112,10 +112,10 @@ bool FrontierExplorerCore::active_frontier_goal_in_progress() const
 
 void FrontierExplorerCore::handleUrgentRawMapUpdateForActiveGoal()
 {
-  if (goal_in_progress && active_goal_kind == "frontier") {
-    consider_preempt_active_goal("map");
-    return;
-  }
+  // if (goal_in_progress && active_goal_kind == "frontier") {
+  //   consider_preempt_active_goal("map");
+  //   return;
+  // }
 
   if (goal_in_progress && active_goal_kind == "suppressed_return_to_start") {
     consider_cancel_suppressed_return_to_start();
@@ -130,13 +130,15 @@ void FrontierExplorerCore::processPendingMapUpdate()
   }
 
   if (goal_in_progress) {
-    if (had_dirty_map && active_goal_kind == "suppressed_return_to_start") {
+    if (had_dirty_map && active_goal_kind == "frontier") {
+      consider_preempt_active_goal("map");
+    } else if (had_dirty_map && active_goal_kind == "suppressed_return_to_start") {
       consider_cancel_suppressed_return_to_start();
     }
     return;
   }
 
-  if (!had_dirty_map && !awaiting_map_refresh) {
+  if (!had_dirty_map) {
     return;
   }
 
@@ -174,6 +176,11 @@ void FrontierExplorerCore::costmapCallback(const OccupancyGrid2d & map_msg)
     consider_cancel_suppressed_return_to_start();
     return;
   }
+
+  if (awaiting_map_refresh) {
+    return;
+  }
+
   if (params.map_processing_rate_hz <= 0.0 || !decision_map_dirty) {
     try_send_next_goal();
   }
@@ -194,6 +201,11 @@ void FrontierExplorerCore::localCostmapCallback(const OccupancyGrid2d & map_msg)
     consider_cancel_suppressed_return_to_start();
     return;
   }
+
+  if (awaiting_map_refresh) {
+    return;
+  }
+
   if (params.map_processing_rate_hz <= 0.0 || !decision_map_dirty) {
     try_send_next_goal();
   }

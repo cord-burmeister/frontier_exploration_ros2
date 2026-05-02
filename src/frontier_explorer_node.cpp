@@ -1121,10 +1121,11 @@ void FrontierExplorerNode::occupancyGridCallback(const nav_msgs::msg::OccupancyG
   }
 
   core_->ingestRawMapUpdate(map_msg);
-  core_->handleUrgentRawMapUpdateForActiveGoal();
-  if (maybeFinalizeMapProcessingRateEstimate()) {
-    mapProcessingTimerCallback();
-  }
+  maybeFinalizeMapProcessingRateEstimate();
+  //   core_->handleUrgentRawMapUpdateForActiveGoal();
+  // if (maybeFinalizeMapProcessingRateEstimate()) {
+  //   mapProcessingTimerCallback();
+  // }
 }
 
 void FrontierExplorerNode::costmapCallback(const nav_msgs::msg::OccupancyGrid::ConstSharedPtr msg)

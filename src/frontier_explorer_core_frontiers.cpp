@@ -346,6 +346,15 @@ void FrontierExplorerCore::start_post_goal_settle()
 
 void FrontierExplorerCore::wait_for_next_map_refresh()
 {
+   awaiting_map_refresh = true;
+
+  if (params.post_goal_settle_enabled) {
+    post_goal_settle_active = true;
+    post_goal_settle_started_at_ns = callbacks.now_ns();
+  } else {
+    post_goal_settle_active = false;
+    post_goal_settle_started_at_ns.reset();
+  }
   start_post_goal_settle();
 }
 
