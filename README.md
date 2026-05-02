@@ -36,9 +36,6 @@ The package successfully completed explorations with up to 99.9% coverage across
 - [Demo Repository](#demo-repository)
 - [Installation and Build](#installation-and-build)
 - [Rviz Plugin](#rviz-plugin)
-- [Integration Guide](#integration-guide)
-- [Quick Start](#quick-start)
-- [QoS Configuration](#qos-configuration)
 - [Launch File Reference](#launch-file-reference)
 - [Greedy MRTSP vs Dynamic Programming](#greedy-mrtsp-vs-dynamic-programming)
 - [Benchmark](#benchmark)
@@ -46,6 +43,9 @@ The package successfully completed explorations with up to 99.9% coverage across
 - [Architecture](#architecture)
 - [Debug Observer](#debug-observer)
 - [Algorithm and Mathematics](#algorithm-and-mathematics)
+- [Integration Guide](#integration-guide)
+- [Quick Start](#quick-start)
+- [QoS Configuration](#qos-configuration)
 - [Parameter Reference](#parameter-reference)
 - [TurtleBot3 Waffle Pi Example](#turtlebot3-waffle-pi-example)
 - [Testing](#testing)
@@ -400,228 +400,6 @@ When the package is started with its own example launch file, `stop -q` also cau
 <img src="https://raw.githubusercontent.com/mertgulerx/readme-assets/main/frontier-exploration/frontier-exploration-ros2-rviz.png" alt="RViz plugin for frontier_exploration_ros2" width="50%" />
 
 For details, inspect plugin's own [README.md](plugin/frontier_exploration_ros2_rviz/README.md).
-
-<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
-
-## Integration Guide
-
-### Required Interfaces
-
-The node expects the following interfaces to exist in the running system:
-
-| Interface             | Default                  | Purpose                                                               |
-| --------------------- | ------------------------ | --------------------------------------------------------------------- |
-| Occupancy grid topic  | `map`                    | Frontier extraction and decision-map input                            |
-| Global costmap topic  | `global_costmap/costmap` | Reachability and blocked-goal filtering                               |
-| Local costmap topic   | `local_costmap/costmap`  | Near-field blocked-goal filtering                                     |
-| Nav2 action           | `navigate_to_pose`       | Goal execution                                                        |
-| TF transform          | `map -> base_footprint`  | Robot pose lookup                                                     |
-| Frontier marker topic | `explore/frontiers`      | Visualization                                                         |
-| Control service       | `control_exploration`    | Optional runtime start, stop, schedule, and quit control when enabled |
-
-### Topic and Frame Mapping
-
-For most integrations, only these fields need to be remapped:
-
-- `map_topic`
-- `costmap_topic`
-- `local_costmap_topic`
-- `navigate_to_pose_action_name`
-- `global_frame`
-- `robot_base_frame`
-- `frontier_marker_topic`
-- `selected_frontier_topic`
-- `optimized_map_topic`
-
-All defaults are relative topic names inside the package-owned baseline config. That keeps the package namespace-friendly in multi-robot deployments. If your system uses absolute topic names, provide them explicitly in your parameter file.
-
-### Nav2 Integration
-
-The public node is designed around `nav2_msgs/action/NavigateToPose`.
-
-The explorer:
-
-- waits for the action server with a bounded timeout
-- dispatches one frontier goal at a time
-- receives feedback and result callbacks
-- can request cancelation during preemption flows
-
-If your stack wraps Nav2 behind a namespace or a remapped action name, update `navigate_to_pose_action_name` accordingly.
-
-If suppression is enabled, repeated rejected goals, aborted goals, or no-progress timeout cancelations can temporarily remove a frontier area from selection.
-
-### Multi-Robot and Namespace Use
-
-The launch file accepts a `namespace` argument and all packaged topic defaults are relative. That makes the package suitable for:
-
-- one explorer per robot namespace
-- one Nav2 stack per robot namespace
-- one map and costmap graph per robot namespace
-
-Example:
-
-```bash
-ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
-  namespace:=robot1 \
-  params_file:=/absolute/path/to/robot1_frontier.yaml
-```
-
-### Completion Event Consumption
-
-When `completion_event_enabled` is `true`, the explorer publishes one `std_msgs/msg/Empty` message when frontier exhaustion is observed.
-
-Completion event QoS:
-
-- durability: `transient_local`
-- reliability: `reliable`
-- depth: `1`
-
-Design intent:
-
-- the explorer reports completion
-- external systems decide what to do next
-- late-joining subscribers can still see the latest completion event while the explorer node remains alive
-
-Typical consumers include:
-
-- map export services
-- docking or return-home supervisors
-- mission sequencers
-- test automation scripts
-
-Suppressed return-to-start is different. If `all_frontiers_suppressed_behavior=return_to_start`, the robot may temporarily go back to the start pose while waiting for new frontier opportunities, but that does not publish a completion event and does not mean exploration has finished.
-
-### Reusing the C++ Core Library
-
-The package exports a reusable C++ target:
-
-```cmake
-find_package(frontier_exploration_ros2 REQUIRED)
-
-add_executable(my_explorer src/my_explorer.cpp)
-target_link_libraries(my_explorer
-  frontier_exploration_ros2::frontier_exploration_ros2_core
-)
-```
-
-The core separates the exploration logic from the public node for custom ROS 2 integrations.
-
-### Suppression Behavior in Practice
-
-Suppression is most useful in systems where the same frontier can fail repeatedly for operational reasons that are not visible in the occupancy map alone. Common examples include:
-
-- a navigation stack that comes up later than the explorer
-- a planner that keeps rejecting a narrow or unstable goal area
-- a controller that stalls near clutter without making meaningful progress
-- a temporary map or costmap inconsistency during bring-up
-
-In those cases, suppression adds three controls:
-
-- startup grace delays suppression until the initial system bring-up window has passed
-- failure memory temporarily removes repeatedly failing goal areas from reselection
-- optional temporary return-to-start behavior avoids treating the situation as exploration complete
-
-If the frontier set changes and a usable candidate appears again, the temporary return-to-start goal is canceled and frontier exploration resumes automatically.
-
-<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
-
-## QoS Configuration
-
-### Supported User-Facing Tokens
-
-Accepted durability values:
-
-- `transient_local`
-- `volatile`
-- `system_default`
-
-Accepted reliability values:
-
-- `reliable`
-- `best_effort`
-- `system_default`
-
-### Default QoS Profiles
-
-| Channel          | Default durability | Default reliability           | Default depth                 |
-| ---------------- | ------------------ | ----------------------------- | ----------------------------- |
-| Map              | `transient_local`  | `reliable`                    | `1`                           |
-| Global costmap   | `volatile`         | `reliable`                    | `10`                          |
-| Local costmap    | `volatile`         | `inherit` from global costmap | `inherit` from global costmap |
-| Completion event | `transient_local`  | `reliable`                    | `1`                           |
-
-The local costmap subscriber always uses volatile durability. Reliability and depth can either inherit the global costmap settings or be overridden explicitly.
-
-### Startup-Only Map Durability Autodetect
-
-If the correct map durability is not known during first integration, the package can probe it at startup.
-
-Behavior:
-
-1. Start with the configured map durability.
-2. Wait for `map_qos_autodetect_timeout_s`.
-3. If no map is received and the configured durability is `transient_local` or `volatile`, switch once to the opposite durability.
-4. If a map arrives, lock that choice and stop autodetect.
-5. If neither attempt succeeds, stop autodetect and report failure.
-
-This process is strictly startup-only. It does not keep switching at runtime.
-
-### Autodetect Log Meanings
-
-The node emits machine-parsable logs with a fixed prefix:
-
-```text
-[qos-autodetect] START selected=<durability> timeout=<seconds>
-[qos-autodetect] SWITCH selected=<durability> elapsed=<seconds>
-[qos-autodetect] COMPLETE result=<initial|fallback|failed> selected=<durability> elapsed=<seconds>
-```
-
-Interpretation:
-
-- `result=initial`: the first configured durability worked
-- `result=fallback`: the fallback durability worked
-- `result=failed`: neither attempt received a map within the startup window
-
-Recommended integration sequence:
-
-1. Enable autodetect once during bring-up.
-2. Read the `COMPLETE` log.
-3. Copy the working durability into your permanent parameter file.
-4. Disable autodetect for regular deployments.
-
-Suppression does not define its own QoS policy, but it is still relevant during first integration. If map QoS is wrong or the navigation stack comes up late, the explorer can observe unstable early behavior. The recommended pattern is:
-
-1. fix map QoS first
-2. use startup grace while validating navigation bring-up timing
-3. then tune suppression thresholds only after the transport layer is stable
-
-<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
-
-## Launch File Reference
-
-Launch file: `launch/frontier_explorer.launch.py`
-
-| Argument                        | Default                       | Effect                                              | Overrides YAML    |
-| ------------------------------- | ----------------------------- | --------------------------------------------------- | ----------------- |
-| `namespace`                     | `""`                          | Runs the node inside a ROS namespace                | No                |
-| `params_file`                   | packaged `config/params.yaml` | Selects the parameter file                          | Replaces the file |
-| `use_sim_time`                  | `false`                       | Passes standard ROS simulation time parameter       | Yes               |
-| `autostart`                     | `""`                          | Overrides the YAML `autostart` value when set       | Yes               |
-| `control_service_enabled`       | `""`                          | Overrides the YAML control-service setting when set | Yes               |
-| `log_level`                     | `info`                        | Sets node log severity                              | No                |
-| `map_qos_durability`            | `transient_local`             | Overrides map durability                            | Yes               |
-| `map_qos_autodetect_on_startup` | `false`                       | Enables startup autodetect                          | Yes               |
-| `map_qos_autodetect_timeout_s`  | `2.0`                         | Sets timeout per autodetect attempt                 | Yes               |
-| `costmap_qos_reliability`       | `reliable`                    | Overrides global costmap reliability                | Yes               |
-
-Notes:
-
-- `params_file` controls the full YAML source for the node.
-- the launch file only overrides `autostart`, `control_service_enabled`, the QoS-related parameters listed above, and `use_sim_time`
-- all other node behavior is defined by the selected parameter file
-- MRTSP solver selection, decision-map tuning, suppression behavior, startup grace, and suppressed-frontier waiting policy are configured in YAML, not through dedicated launch arguments
-
-<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
 
 <p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
 
@@ -1629,6 +1407,226 @@ When all current candidates are suppressed, `all_frontiers_suppressed_behavior` 
 - `return_to_start`: temporarily navigate back to the recorded start pose
 
 This temporary return behavior is separate from `return_to_start_on_complete`. It does not mark exploration complete, and it is canceled automatically if usable frontier candidates appear again.
+
+<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
+
+## Integration Guide
+
+### Required Interfaces
+
+The node expects the following interfaces to exist in the running system:
+
+| Interface             | Default                  | Purpose                                                               |
+| --------------------- | ------------------------ | --------------------------------------------------------------------- |
+| Occupancy grid topic  | `map`                    | Frontier extraction and decision-map input                            |
+| Global costmap topic  | `global_costmap/costmap` | Reachability and blocked-goal filtering                               |
+| Local costmap topic   | `local_costmap/costmap`  | Near-field blocked-goal filtering                                     |
+| Nav2 action           | `navigate_to_pose`       | Goal execution                                                        |
+| TF transform          | `map -> base_footprint`  | Robot pose lookup                                                     |
+| Frontier marker topic | `explore/frontiers`      | Visualization                                                         |
+| Control service       | `control_exploration`    | Optional runtime start, stop, schedule, and quit control when enabled |
+
+### Topic and Frame Mapping
+
+For most integrations, only these fields need to be remapped:
+
+- `map_topic`
+- `costmap_topic`
+- `local_costmap_topic`
+- `navigate_to_pose_action_name`
+- `global_frame`
+- `robot_base_frame`
+- `frontier_marker_topic`
+- `selected_frontier_topic`
+- `optimized_map_topic`
+
+All defaults are relative topic names inside the package-owned baseline config. That keeps the package namespace-friendly in multi-robot deployments. If your system uses absolute topic names, provide them explicitly in your parameter file.
+
+### Nav2 Integration
+
+The public node is designed around `nav2_msgs/action/NavigateToPose`.
+
+The explorer:
+
+- waits for the action server with a bounded timeout
+- dispatches one frontier goal at a time
+- receives feedback and result callbacks
+- can request cancelation during preemption flows
+
+If your stack wraps Nav2 behind a namespace or a remapped action name, update `navigate_to_pose_action_name` accordingly.
+
+If suppression is enabled, repeated rejected goals, aborted goals, or no-progress timeout cancelations can temporarily remove a frontier area from selection.
+
+### Multi-Robot and Namespace Use
+
+The launch file accepts a `namespace` argument and all packaged topic defaults are relative. That makes the package suitable for:
+
+- one explorer per robot namespace
+- one Nav2 stack per robot namespace
+- one map and costmap graph per robot namespace
+
+Example:
+
+```bash
+ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
+  namespace:=robot1 \
+  params_file:=/absolute/path/to/robot1_frontier.yaml
+```
+
+### Completion Event Consumption
+
+When `completion_event_enabled` is `true`, the explorer publishes one `std_msgs/msg/Empty` message when frontier exhaustion is observed.
+
+Completion event QoS:
+
+- durability: `transient_local`
+- reliability: `reliable`
+- depth: `1`
+
+Design intent:
+
+- the explorer reports completion
+- external systems decide what to do next
+- late-joining subscribers can still see the latest completion event while the explorer node remains alive
+
+Typical consumers include:
+
+- map export services
+- docking or return-home supervisors
+- mission sequencers
+- test automation scripts
+
+Suppressed return-to-start is different. If `all_frontiers_suppressed_behavior=return_to_start`, the robot may temporarily go back to the start pose while waiting for new frontier opportunities, but that does not publish a completion event and does not mean exploration has finished.
+
+### Reusing the C++ Core Library
+
+The package exports a reusable C++ target:
+
+```cmake
+find_package(frontier_exploration_ros2 REQUIRED)
+
+add_executable(my_explorer src/my_explorer.cpp)
+target_link_libraries(my_explorer
+  frontier_exploration_ros2::frontier_exploration_ros2_core
+)
+```
+
+The core separates the exploration logic from the public node for custom ROS 2 integrations.
+
+### Suppression Behavior in Practice
+
+Suppression is most useful in systems where the same frontier can fail repeatedly for operational reasons that are not visible in the occupancy map alone. Common examples include:
+
+- a navigation stack that comes up later than the explorer
+- a planner that keeps rejecting a narrow or unstable goal area
+- a controller that stalls near clutter without making meaningful progress
+- a temporary map or costmap inconsistency during bring-up
+
+In those cases, suppression adds three controls:
+
+- startup grace delays suppression until the initial system bring-up window has passed
+- failure memory temporarily removes repeatedly failing goal areas from reselection
+- optional temporary return-to-start behavior avoids treating the situation as exploration complete
+
+If the frontier set changes and a usable candidate appears again, the temporary return-to-start goal is canceled and frontier exploration resumes automatically.
+
+<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
+
+## QoS Configuration
+
+### Supported User-Facing Tokens
+
+Accepted durability values:
+
+- `transient_local`
+- `volatile`
+- `system_default`
+
+Accepted reliability values:
+
+- `reliable`
+- `best_effort`
+- `system_default`
+
+### Default QoS Profiles
+
+| Channel          | Default durability | Default reliability           | Default depth                 |
+| ---------------- | ------------------ | ----------------------------- | ----------------------------- |
+| Map              | `transient_local`  | `reliable`                    | `1`                           |
+| Global costmap   | `volatile`         | `reliable`                    | `10`                          |
+| Local costmap    | `volatile`         | `inherit` from global costmap | `inherit` from global costmap |
+| Completion event | `transient_local`  | `reliable`                    | `1`                           |
+
+The local costmap subscriber always uses volatile durability. Reliability and depth can either inherit the global costmap settings or be overridden explicitly.
+
+### Startup-Only Map Durability Autodetect
+
+If the correct map durability is not known during first integration, the package can probe it at startup.
+
+Behavior:
+
+1. Start with the configured map durability.
+2. Wait for `map_qos_autodetect_timeout_s`.
+3. If no map is received and the configured durability is `transient_local` or `volatile`, switch once to the opposite durability.
+4. If a map arrives, lock that choice and stop autodetect.
+5. If neither attempt succeeds, stop autodetect and report failure.
+
+This process is strictly startup-only. It does not keep switching at runtime.
+
+### Autodetect Log Meanings
+
+The node emits machine-parsable logs with a fixed prefix:
+
+```text
+[qos-autodetect] START selected=<durability> timeout=<seconds>
+[qos-autodetect] SWITCH selected=<durability> elapsed=<seconds>
+[qos-autodetect] COMPLETE result=<initial|fallback|failed> selected=<durability> elapsed=<seconds>
+```
+
+Interpretation:
+
+- `result=initial`: the first configured durability worked
+- `result=fallback`: the fallback durability worked
+- `result=failed`: neither attempt received a map within the startup window
+
+Recommended integration sequence:
+
+1. Enable autodetect once during bring-up.
+2. Read the `COMPLETE` log.
+3. Copy the working durability into your permanent parameter file.
+4. Disable autodetect for regular deployments.
+
+Suppression does not define its own QoS policy, but it is still relevant during first integration. If map QoS is wrong or the navigation stack comes up late, the explorer can observe unstable early behavior. The recommended pattern is:
+
+1. fix map QoS first
+2. use startup grace while validating navigation bring-up timing
+3. then tune suppression thresholds only after the transport layer is stable
+
+<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
+
+## Launch File Reference
+
+Launch file: `launch/frontier_explorer.launch.py`
+
+| Argument                        | Default                       | Effect                                              | Overrides YAML    |
+| ------------------------------- | ----------------------------- | --------------------------------------------------- | ----------------- |
+| `namespace`                     | `""`                          | Runs the node inside a ROS namespace                | No                |
+| `params_file`                   | packaged `config/params.yaml` | Selects the parameter file                          | Replaces the file |
+| `use_sim_time`                  | `false`                       | Passes standard ROS simulation time parameter       | Yes               |
+| `autostart`                     | `""`                          | Overrides the YAML `autostart` value when set       | Yes               |
+| `control_service_enabled`       | `""`                          | Overrides the YAML control-service setting when set | Yes               |
+| `log_level`                     | `info`                        | Sets node log severity                              | No                |
+| `map_qos_durability`            | `transient_local`             | Overrides map durability                            | Yes               |
+| `map_qos_autodetect_on_startup` | `false`                       | Enables startup autodetect                          | Yes               |
+| `map_qos_autodetect_timeout_s`  | `2.0`                         | Sets timeout per autodetect attempt                 | Yes               |
+| `costmap_qos_reliability`       | `reliable`                    | Overrides global costmap reliability                | Yes               |
+
+Notes:
+
+- `params_file` controls the full YAML source for the node.
+- the launch file only overrides `autostart`, `control_service_enabled`, the QoS-related parameters listed above, and `use_sim_time`
+- all other node behavior is defined by the selected parameter file
+- MRTSP solver selection, decision-map tuning, suppression behavior, startup grace, and suppressed-frontier waiting policy are configured in YAML, not through dedicated launch arguments
 
 <p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
 
