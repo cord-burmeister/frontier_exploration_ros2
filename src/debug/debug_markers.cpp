@@ -562,7 +562,7 @@ visualization_msgs::msg::MarkerArray make_dp_pruning_markers(
     } else {
       label << "\ndp_order=-";
     }
-    label << "\nscore=" << fixed(candidate.mrtsp_start_cost, 3);
+    label << "\ncost=" << fixed(candidate.mrtsp_start_cost, 3);
 
     auto label_text = text_marker(
       config,

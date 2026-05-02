@@ -56,9 +56,9 @@ frontier_explorer:
     # --------------- GENERAL --------------- #
 
     # Refresh Rate of the package.
-    # `0.5` is recommended. Use `1.0` if your robot is very fast. 
-    # Use `0.25` if your robot is slow and you want lowest CPU usage.  
-    map_processing_rate_hz: 0.5
+    # `1.0` is recommended. Use `2.0` if your robot is very fast. 
+    # Use `0.50` if your mapping is slow and you want lowest CPU usage.  
+    map_processing_rate_hz: 1.0
 
     # Start exploration immediately at launch.
     autostart: true
@@ -91,6 +91,10 @@ frontier_explorer:
     # Replan while navigating if target-pose visible reveal gain for active goal is exhausted.
     # Disable if you are having performance issues.
     goal_preemption_enabled: true
+
+     # Minimum seconds between consecutive goal preemption attempts.
+    # Also effects performance.
+    goal_preemption_min_interval_s: 2.0
 
     # Skip the active frontier goal if it becomes blocked.
     goal_skip_on_blocked_goal: true
@@ -131,13 +135,13 @@ frontier_explorer:
     # It does not command the robot directly; it estimates how fast a frontier
     # can be reached when building the first row of the cost matrix.
     # Larger values reduce the time penalty of distant frontiers.
-    max_linear_speed_vmax: 0.50
+    max_linear_speed_vmax: 1.0
 
     # Max angular speed used in the heading-change part of time lower bound.
     # This matters most when candidate frontiers require large initial turns.
     # Larger values reduce the penalty of reorientation-heavy options.
     # Example: low values prefer frontiers already near the current heading.
-    max_angular_speed_wmax: 1.0
+    max_angular_speed_wmax: 0.50
 
     # Effective sensor range subtracted inside the paper's path-cost term.
     # Larger values reduce the effective traversal penalty between frontiers.
@@ -201,9 +205,6 @@ frontier_explorer:
 
 
     # --------------- Preemption --------------- #
-
-    # Minimum seconds between consecutive goal preemption attempts.
-    goal_preemption_min_interval_s: 2.0
 
     # Treat the current frontier as complete once the robot is this close to it; 0.0 disables this shortcut.
     # This close-enough guard also works when visible-gain preemption is disabled, but obstacle-avoidance-heavy robots should use it carefully because large values can end a frontier too early and trigger wrong exploration choices.
