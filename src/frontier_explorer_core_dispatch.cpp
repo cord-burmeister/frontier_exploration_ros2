@@ -46,6 +46,8 @@ void FrontierExplorerCore::try_send_next_goal()
     return;
   }
 
+  commit_deferred_costmap_search_input_updates();
+
   if (awaiting_map_refresh && !post_goal_settle_ready()) {
     // Settle window is still active after previous goal completion.
     return;
@@ -192,6 +194,8 @@ void FrontierExplorerCore::reset_exploration_runtime_state(bool clear_maps)
   pending_frontier_selection_mode.clear();
   pending_frontier_dispatch_context.clear();
   active_goal_blocked_reason.reset();
+  pending_costmap_search_input_update = false;
+  pending_local_costmap_search_input_update = false;
   distance_completed_frontier.reset();
   last_low_gain_reselection_time_ns.reset();
   reset_replacement_candidate_tracking();
@@ -440,13 +444,13 @@ void FrontierExplorerCore::consider_preempt_active_goal(const std::string & trig
   }
 
   if (cancel_request_in_progress) {
-    // Avoid duplicate cancel requests while previous cancel handshake is in flight.
-    return;
-  }
+  // Avoid duplicate cancel requests while previous cancel handshake is in flight.
+  return;
+} 
 
-  if (!active_goal_cost_status.has_value()) {
-    active_goal_blocked_reason.reset();
-  }
+if (!active_goal_cost_status.has_value()) {
+  active_goal_blocked_reason.reset();
+}
 
   const auto active_goal_point = active_goal_target_point();
   if (!active_goal_point.has_value()) {

@@ -426,6 +426,8 @@ public:
   bool post_goal_settle_active{false};
   std::optional<int64_t> post_goal_settle_started_at_ns;
   bool decision_map_dirty{false};
+  bool pending_costmap_search_input_update{false};
+  bool pending_local_costmap_search_input_update{false}; 
 
   // Escape and return-to-start behavior flags.
   bool return_to_start_started{false};
@@ -480,6 +482,7 @@ private:
   void record_failed_frontier_attempt(const std::optional<FrontierLike> & frontier);
   void clear_active_goal_progress_state();
   void start_active_goal_progress_tracking();
+  void commit_deferred_costmap_search_input_updates();
   void note_active_goal_progress(double distance_remaining);
   void reset_exploration_runtime_state(bool clear_maps);
 

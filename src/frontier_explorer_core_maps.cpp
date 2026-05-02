@@ -110,6 +110,28 @@ bool FrontierExplorerCore::active_frontier_goal_in_progress() const
   return goal_in_progress && active_goal_kind == "frontier";
 }
 
+void FrontierExplorerCore::commit_deferred_costmap_search_input_updates()
+{
+  bool committed_update = false;
+
+  if (pending_costmap_search_input_update) {
+    costmap_generation += 1;
+    pending_costmap_search_input_update = false;
+    committed_update = true;
+  }
+
+  if (pending_local_costmap_search_input_update) {
+    local_costmap_generation += 1;
+    pending_local_costmap_search_input_update = false;
+    committed_update = true;
+  }
+
+  if (committed_update) {
+    frontier_snapshot.reset();
+    raw_frontier_debug_cache.reset();
+  }
+}
+
 void FrontierExplorerCore::handleUrgentRawMapUpdateForActiveGoal()
 {
   // if (goal_in_progress && active_goal_kind == "frontier") {
@@ -165,21 +187,38 @@ void FrontierExplorerCore::costmapCallback(const OccupancyGrid2d & map_msg)
 {
   const bool costmap_changed = !same_costmap_search_input(costmap, map_msg);
   costmap = map_msg;
-  if (costmap_changed) {
-    costmap_generation += 1;
-  }
-  if (goal_in_progress && active_goal_kind == "frontier") {
-    consider_preempt_active_goal("costmap");
+
+  if (active_frontier_goal_in_progress()) {
+    if (costmap_changed) {
+      pending_costmap_search_input_update = true;
+    }
+
+    const auto active_goal_cost_status = params.goal_skip_on_blocked_goal ?
+      frontier_cost_status(active_goal_frontier) : std::optional<std::string>{};
+
+    if (active_goal_cost_status.has_value()) {
+      active_goal_blocked_reason = *active_goal_cost_status;
+      request_active_goal_cancel(*active_goal_cost_status);
+    } else {
+      active_goal_blocked_reason.reset();
+    }
+
     return;
   }
+
   if (goal_in_progress && active_goal_kind == "suppressed_return_to_start") {
+    if (costmap_changed) {
+      pending_costmap_search_input_update = true;
+    }
     consider_cancel_suppressed_return_to_start();
     return;
   }
 
-  if (awaiting_map_refresh) {
-    return;
+  if (costmap_changed) {
+    pending_costmap_search_input_update = true;
   }
+
+  commit_deferred_costmap_search_input_updates();
 
   if (params.map_processing_rate_hz <= 0.0 || !decision_map_dirty) {
     try_send_next_goal();
@@ -190,21 +229,38 @@ void FrontierExplorerCore::localCostmapCallback(const OccupancyGrid2d & map_msg)
 {
   const bool local_costmap_changed = !same_costmap_search_input(local_costmap, map_msg);
   local_costmap = map_msg;
-  if (local_costmap_changed) {
-    local_costmap_generation += 1;
-  }
-  if (goal_in_progress && active_goal_kind == "frontier") {
-    consider_preempt_active_goal("costmap");
+
+  if (active_frontier_goal_in_progress()) {
+    if (local_costmap_changed) {
+      pending_local_costmap_search_input_update = true;
+    }
+
+    const auto active_goal_cost_status = params.goal_skip_on_blocked_goal ?
+      frontier_cost_status(active_goal_frontier) : std::optional<std::string>{};
+
+    if (active_goal_cost_status.has_value()) {
+      active_goal_blocked_reason = *active_goal_cost_status;
+      request_active_goal_cancel(*active_goal_cost_status);
+    } else {
+      active_goal_blocked_reason.reset();
+    }
+
     return;
   }
+
   if (goal_in_progress && active_goal_kind == "suppressed_return_to_start") {
+    if (local_costmap_changed) {
+      pending_local_costmap_search_input_update = true;
+    }
     consider_cancel_suppressed_return_to_start();
     return;
   }
 
-  if (awaiting_map_refresh) {
-    return;
+  if (local_costmap_changed) {
+    pending_local_costmap_search_input_update = true;
   }
+
+  commit_deferred_costmap_search_input_updates();
 
   if (params.map_processing_rate_hz <= 0.0 || !decision_map_dirty) {
     try_send_next_goal();
