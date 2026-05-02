@@ -185,13 +185,9 @@ void FrontierExplorerCore::occupancyGridCallback(const OccupancyGrid2d & map_msg
 
 void FrontierExplorerCore::costmapCallback(const OccupancyGrid2d & map_msg)
 {
-  const bool costmap_changed = !same_costmap_search_input(costmap, map_msg);
-  costmap = map_msg;
-
   if (active_frontier_goal_in_progress()) {
-    if (costmap_changed) {
-      pending_costmap_search_input_update = true;
-    }
+    costmap = map_msg;
+    pending_costmap_search_input_update = true;
 
     const auto active_goal_cost_status = params.goal_skip_on_blocked_goal ?
       frontier_cost_status(active_goal_frontier) : std::optional<std::string>{};
@@ -207,12 +203,14 @@ void FrontierExplorerCore::costmapCallback(const OccupancyGrid2d & map_msg)
   }
 
   if (goal_in_progress && active_goal_kind == "suppressed_return_to_start") {
-    if (costmap_changed) {
-      pending_costmap_search_input_update = true;
-    }
+    costmap = map_msg;
+    pending_costmap_search_input_update = true;
     consider_cancel_suppressed_return_to_start();
     return;
   }
+
+  const bool costmap_changed = !same_costmap_search_input(costmap, map_msg);
+  costmap = map_msg;
 
   if (costmap_changed) {
     pending_costmap_search_input_update = true;
@@ -227,13 +225,9 @@ void FrontierExplorerCore::costmapCallback(const OccupancyGrid2d & map_msg)
 
 void FrontierExplorerCore::localCostmapCallback(const OccupancyGrid2d & map_msg)
 {
-  const bool local_costmap_changed = !same_costmap_search_input(local_costmap, map_msg);
-  local_costmap = map_msg;
-
   if (active_frontier_goal_in_progress()) {
-    if (local_costmap_changed) {
-      pending_local_costmap_search_input_update = true;
-    }
+    local_costmap = map_msg;
+    pending_local_costmap_search_input_update = true;
 
     const auto active_goal_cost_status = params.goal_skip_on_blocked_goal ?
       frontier_cost_status(active_goal_frontier) : std::optional<std::string>{};
@@ -249,12 +243,14 @@ void FrontierExplorerCore::localCostmapCallback(const OccupancyGrid2d & map_msg)
   }
 
   if (goal_in_progress && active_goal_kind == "suppressed_return_to_start") {
-    if (local_costmap_changed) {
-      pending_local_costmap_search_input_update = true;
-    }
+    local_costmap = map_msg;
+    pending_local_costmap_search_input_update = true;
     consider_cancel_suppressed_return_to_start();
     return;
   }
+
+  const bool local_costmap_changed = !same_costmap_search_input(local_costmap, map_msg);
+  local_costmap = map_msg;
 
   if (local_costmap_changed) {
     pending_local_costmap_search_input_update = true;
