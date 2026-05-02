@@ -23,19 +23,6 @@ In benchmarks against a variety of exploration algorithms under shared simulatio
 
 The package successfully completed explorations with up to 99.9% coverage across challenging environments, including complex layouts, maze-like structures, dense obstacle areas, zigzag inducing areas, and large open spaces.
 
-Philosophy:
-
-```
-Simple Core.
-Clean interfaces.
-Optional parameters.
-Fast target selection.
-No overloaded responsibilities.
-Nav2 does navigation.
-SLAM does mapping.
-Explorer does exploration.
-```
-
 ## Table of Contents
 
 - [Overview](#overview)
@@ -46,18 +33,19 @@ Explorer does exploration.
 - [Verified Environment](#verified-environment)
 - [Design Goals](#design-goals)
 - [Flowchart Diagram](#flowchart-diagram)
+- [Demo Repository](#demo-repository)
+- [Installation and Build](#installation-and-build)
+- [Rviz Plugin](#rviz-plugin)
+- [Integration Guide](#integration-guide)
+- [Quick Start](#quick-start)
+- [QoS Configuration](#qos-configuration)
+- [Launch File Reference](#launch-file-reference)
 - [Greedy MRTSP vs Dynamic Programming](#greedy-mrtsp-vs-dynamic-programming)
 - [Benchmark](#benchmark)
 - [Nearest vs Greedy MRTSP Results](#nearest-vs-greedy-mrtsp-results)
 - [Architecture](#architecture)
 - [Debug Observer](#debug-observer)
 - [Algorithm and Mathematics](#algorithm-and-mathematics)
-- [Installation and Build](#installation-and-build)
-- [Quick Start](#quick-start)
-- [Rviz Plugin](#rviz-plugin)
-- [Integration Guide](#integration-guide)
-- [QoS Configuration](#qos-configuration)
-- [Launch File Reference](#launch-file-reference)
 - [Parameter Reference](#parameter-reference)
 - [TurtleBot3 Waffle Pi Example](#turtlebot3-waffle-pi-example)
 - [Testing](#testing)
@@ -130,14 +118,15 @@ In practice, that makes the package easier to reuse in Nav2 deployments, custom 
 
 ## Version History
 
-| Version  | Summary                                                                                                                              |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `v1.0.0` | First release                                                                                                                        |
-| `v1.1.0` | Added [visible-reveal-gain preemption](#preemption-and-blocked-goal-design) to reduce path complexity and optimize traveled distance |
-| `v1.2.0` | Added [smarter frontier ordering (MRTSP)](#mrtsp-cost-matrix), map optimization before search, and performance improvements          |
-| `v1.3.0` | Added [runtime control service](#runtime-control) and CLI, cold-idle support, and the optional [RViz control plugin](#rviz-plugin)   |
-| `v1.4.0` | Added [demo repository](#demo-repository) and improved Nav2 stability                                                                |
-| `v1.5.0` | Added [bounded-horizon DP ordering](#bounded-horizon-dp-ordering), bug fixes, and performance and stability improvements             |
+| Version  | Summary                                                                                                                                                                                                                                                                                                                                |
+| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `v1.0.0` | First release                                                                                                                                                                                                                                                                                                                          |
+| `v1.1.0` | Added [visible-reveal-gain preemption](#preemption-and-blocked-goal-design) to reduce path complexity and optimize traveled distance                                                                                                                                                                                                   |
+| `v1.2.0` | Added [smarter frontier ordering (MRTSP)](#mrtsp-cost-matrix), map optimization before search, and performance improvements                                                                                                                                                                                                            |
+| `v1.3.0` | Added [runtime control service](#runtime-control) and CLI, cold-idle support, and the optional [RViz control plugin](#rviz-plugin)                                                                                                                                                                                                     |
+| `v1.4.0` | Added [demo repository](#demo-repository) and improved Nav2 stability                                                                                                                                                                                                                                                                  |
+| `v1.5.0` | Added [bounded-horizon DP ordering](#bounded-horizon-dp-ordering), bug fixes, and performance and stability improvements                                                                                                                                                                                                               |
+| `v1.6.0` | Added accurate distance calculation, grid based caching for map optimization, better distance and direction scoring for MRTSP, map processing refresh rate, better guarding for Nav2 failures. <br> Optimized preemption CPU usage. <br> Improved stability of the exploration and general performance. <br> Deprecated `nearest` mode |
 
 <p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
 
@@ -154,33 +143,18 @@ The implementation has been validated in a ROS 2 Jazzy exploration stack built a
 
 This is not the only supported integration path, but it is a verified environment in which the package has successfully completed frontier exploration with the expected map, costmap, TF, and navigation flow.
 
-LiDAR quality is especially important for this package because frontier extraction, map optimization, blocked-goal checks, SLAM stability, and navigation progress all depend on the quality of the incoming scan data.
+The verified TurtleBot3 Waffle Pi setup uses a 360-degree 12.0 m range 2D LiDAR and default parameters are adjusted according to this.
 
-The verified TurtleBot3 Waffle Pi setup uses the ROBOTIS LDS-03 2D LiDAR. The LDS-03 provides 360-degree scanning and an official distance range of approximately `0.05 m` to `12.0 m`. In practice, exploration quality depends not only on the published sensor range, but also on mounting, scan cleanliness, environment reflectivity, filtering, and the usable range chosen by the navigation stack.
+Exploration parameters can be affected by LiDAR characteristics, so they should be tuned for the actual sensor and environment.
 
-Exploration parameters can be strongly affected by LiDAR characteristics, so they should be tuned carefully for the actual sensor and environment.
-
-The TurtleBot3 Waffle Pi is also a relatively small and slow robot, so parameter values may need to change on faster platforms.
-
-<img src="https://raw.githubusercontent.com/mertgulerx/readme-assets/main/frontier-exploration/mertgulerx-frontier-exploration-gain-gate-preemption-example-on-a-turtlebot3-waffle-pi.gif" alt="Frontier exploration demo with visible-reveal-gain preemption on a TurtleBot3 Waffle Pi" width="75%" />
-
-> [!TIP]
-> This demo uses `nearest frontier selection` and `visible-reveal-gain-based preemption` to reduce unnecessary path complexity and keep exploration responsive in cluttered environments.
+The TurtleBot3 Waffle Pi is also a relatively small and slow robot, so parameter values may need to change on bigger and faster platforms.
 
 <img src="https://raw.githubusercontent.com/mertgulerx/readme-assets/main/frontier-exploration/mertgulerx-frontier-exploration-mrtsp.gif" alt="Frontier exploration demo with Greedy MRTSP, map optimization, and preemption on a TurtleBot3 Waffle Pi" width="75%" />
 
 > [!TIP]
-> This demo uses `Greedy MRTSP + Map Optimization + Preemption` to achieve highly efficient, smart autonomous exploration with smoother and more purposeful navigation decisions.
+> This demo uses `MRTSP Scoring + Map Optimization + Early Preemption` to achieve highly efficient, smart autonomous exploration with smoother and more purposeful navigation decisions.
 
 <p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
-
-## Demo Repository
-
-Visit the [demo repository](https://github.com/mertgulerx/autonomous-exploration-demo-benchmark) to test the package, understand its behavior, and observe the exploration algorithms in action.
-
-The demo repository provides a simulation environment and playground for tuning parameters, testing different configurations, and integrating the package into custom setups.
-
-Docker support is included for easier setup and reproducible testing.
 
 ## Design Goals
 
@@ -266,6 +240,388 @@ Docker support is included for easier setup and reproducible testing.
 |             |
 +-------------+
 ```
+
+## Demo Repository
+
+Visit the [demo repository](https://github.com/mertgulerx/autonomous-exploration-demo-benchmark) to test the package, understand its behavior, and observe the exploration algorithms in action.
+
+The demo repository provides a simulation environment and playground for tuning parameters, testing different configurations, and integrating the package into custom setups.
+
+Docker support is included for easier setup and reproducible testing.
+
+## Installation and Build
+
+### Dependencies
+
+Runtime and build dependencies include:
+
+- ROS 2 Jazzy
+- Nav2
+- `rclcpp`
+- `nav2_msgs`
+- `nav_msgs`
+- `geometry_msgs`
+- `std_msgs`
+- `visualization_msgs`
+- `tf2`
+- `tf2_ros`
+- `ament_cmake`
+
+### Clone
+
+```bash
+git clone https://github.com/mertgulerx/frontier-exploration-ros2.git
+cd frontier-exploration-ros2
+```
+
+### Install Dependencies
+
+```bash
+cd <your_workspace>
+rosdep install --from-paths src --ignore-src -r -y
+```
+
+### Build
+
+```bash
+cd <your_workspace>
+source /opt/ros/jazzy/setup.bash
+colcon build --packages-select frontier_exploration_ros2
+```
+
+<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
+
+## Quick Start
+
+> [!WARNING]
+> Default parameters are designed for TurtleBot3 Waffle Pi. Please don't forget to adjust them for your robot.
+
+The packaged parameter file uses **MRTSP ordering** with **bounded-horizon DP**:
+
+```yaml
+mrtsp_solver: dp
+dp_solver_candidate_limit: 15
+dp_planning_horizon: 10
+```
+
+To use the higher performance but **lower accuracy** greedy method, set `mrtsp_solver: greedy`.
+
+Launch with the packaged parameter file:
+
+```bash
+ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py
+```
+
+The packaged launch file uses the packaged `config/params.yaml` defaults, and that baseline starts exploration immediately with `autostart:=true`.
+
+Override the parameter file:
+
+```bash
+ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
+  params_file:=/absolute/path/to/params.yaml
+```
+
+Run under a namespace:
+
+```bash
+ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
+  namespace:=robot1
+```
+
+Enable simulation time:
+
+```bash
+ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
+  use_sim_time:=true
+```
+
+Override startup map durability:
+
+```bash
+ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
+  map_qos_durability:=volatile
+```
+
+Enable startup-only map QoS autodetect:
+
+```bash
+ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
+  map_qos_autodetect_on_startup:=true \
+  map_qos_autodetect_timeout_s:=2.0
+```
+
+Keep the node in cold idle at launch time:
+
+```bash
+ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
+  autostart:=false
+```
+
+Disable the runtime control service while keeping automatic startup:
+
+```bash
+ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
+  autostart:=true \
+  control_service_enabled:=false
+```
+
+### Runtime Control
+
+When `control_service_enabled=true`, the node exposes a `control_exploration` service using `frontier_exploration_ros2/srv/ControlExploration`. This service provides an explicit runtime control surface for exploration lifecycle management. It is available even when exploration starts automatically, and is mainly useful for stop, delayed start/stop, cold-idle orchestration, and optional self-shutdown flows. If `autostart=false`, the node keeps this service enabled regardless of the configured `control_service_enabled` value so the cold-idle session can still be started.
+
+The packaged CLI helper provides a convenient terminal interface for that service:
+
+```bash
+frontier_exploration_ctl start
+frontier_exploration_ctl start -t 10
+frontier_exploration_ctl stop
+frontier_exploration_ctl stop -t 10
+frontier_exploration_ctl stop -q
+frontier_exploration_ctl stop -t 10 -q
+```
+
+Command semantics:
+
+- `start` enables exploration. If the node is in cold idle, it recreates the required subscriptions and timers, resets session-local exploration state, and begins exploration after fresh input data arrive.
+- `stop` disables exploration, prevents further goal dispatch, and returns the node to cold idle so that map and costmap traffic are no longer processed.
+- `-t <seconds>` schedules the request after the given delay instead of applying it immediately.
+- `stop -q` performs a normal stop sequence and then shuts down the explorer node process.
+
+If the control service is disabled while `autostart=true`, the CLI helper and RViz control panel cannot send runtime commands to that explorer instance.
+
+When the package is started with its own example launch file, `stop -q` also causes that launch session to exit after the explorer process stops. It does not attempt to terminate unrelated nodes, external launch parents, or arbitrary terminal sessions. Higher-level process orchestration remains outside the scope of this package.
+
+<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
+
+## Rviz Plugin
+
+`frontier_exploration_ros2` also provides an optional RViz plugin for start and stop exploration control directly from RViz.
+
+<img src="https://raw.githubusercontent.com/mertgulerx/readme-assets/main/frontier-exploration/frontier-exploration-ros2-rviz.png" alt="RViz plugin for frontier_exploration_ros2" width="50%" />
+
+For details, inspect plugin's own [README.md](plugin/frontier_exploration_ros2_rviz/README.md).
+
+<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
+
+## Integration Guide
+
+### Required Interfaces
+
+The node expects the following interfaces to exist in the running system:
+
+| Interface             | Default                  | Purpose                                                               |
+| --------------------- | ------------------------ | --------------------------------------------------------------------- |
+| Occupancy grid topic  | `map`                    | Frontier extraction and decision-map input                            |
+| Global costmap topic  | `global_costmap/costmap` | Reachability and blocked-goal filtering                               |
+| Local costmap topic   | `local_costmap/costmap`  | Near-field blocked-goal filtering                                     |
+| Nav2 action           | `navigate_to_pose`       | Goal execution                                                        |
+| TF transform          | `map -> base_footprint`  | Robot pose lookup                                                     |
+| Frontier marker topic | `explore/frontiers`      | Visualization                                                         |
+| Control service       | `control_exploration`    | Optional runtime start, stop, schedule, and quit control when enabled |
+
+### Topic and Frame Mapping
+
+For most integrations, only these fields need to be remapped:
+
+- `map_topic`
+- `costmap_topic`
+- `local_costmap_topic`
+- `navigate_to_pose_action_name`
+- `global_frame`
+- `robot_base_frame`
+- `frontier_marker_topic`
+- `selected_frontier_topic`
+- `optimized_map_topic`
+
+All defaults are relative topic names inside the package-owned baseline config. That keeps the package namespace-friendly in multi-robot deployments. If your system uses absolute topic names, provide them explicitly in your parameter file.
+
+### Nav2 Integration
+
+The public node is designed around `nav2_msgs/action/NavigateToPose`.
+
+The explorer:
+
+- waits for the action server with a bounded timeout
+- dispatches one frontier goal at a time
+- receives feedback and result callbacks
+- can request cancelation during preemption flows
+
+If your stack wraps Nav2 behind a namespace or a remapped action name, update `navigate_to_pose_action_name` accordingly.
+
+If suppression is enabled, repeated rejected goals, aborted goals, or no-progress timeout cancelations can temporarily remove a frontier area from selection.
+
+### Multi-Robot and Namespace Use
+
+The launch file accepts a `namespace` argument and all packaged topic defaults are relative. That makes the package suitable for:
+
+- one explorer per robot namespace
+- one Nav2 stack per robot namespace
+- one map and costmap graph per robot namespace
+
+Example:
+
+```bash
+ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
+  namespace:=robot1 \
+  params_file:=/absolute/path/to/robot1_frontier.yaml
+```
+
+### Completion Event Consumption
+
+When `completion_event_enabled` is `true`, the explorer publishes one `std_msgs/msg/Empty` message when frontier exhaustion is observed.
+
+Completion event QoS:
+
+- durability: `transient_local`
+- reliability: `reliable`
+- depth: `1`
+
+Design intent:
+
+- the explorer reports completion
+- external systems decide what to do next
+- late-joining subscribers can still see the latest completion event while the explorer node remains alive
+
+Typical consumers include:
+
+- map export services
+- docking or return-home supervisors
+- mission sequencers
+- test automation scripts
+
+Suppressed return-to-start is different. If `all_frontiers_suppressed_behavior=return_to_start`, the robot may temporarily go back to the start pose while waiting for new frontier opportunities, but that does not publish a completion event and does not mean exploration has finished.
+
+### Reusing the C++ Core Library
+
+The package exports a reusable C++ target:
+
+```cmake
+find_package(frontier_exploration_ros2 REQUIRED)
+
+add_executable(my_explorer src/my_explorer.cpp)
+target_link_libraries(my_explorer
+  frontier_exploration_ros2::frontier_exploration_ros2_core
+)
+```
+
+The core separates the exploration logic from the public node for custom ROS 2 integrations.
+
+### Suppression Behavior in Practice
+
+Suppression is most useful in systems where the same frontier can fail repeatedly for operational reasons that are not visible in the occupancy map alone. Common examples include:
+
+- a navigation stack that comes up later than the explorer
+- a planner that keeps rejecting a narrow or unstable goal area
+- a controller that stalls near clutter without making meaningful progress
+- a temporary map or costmap inconsistency during bring-up
+
+In those cases, suppression adds three controls:
+
+- startup grace delays suppression until the initial system bring-up window has passed
+- failure memory temporarily removes repeatedly failing goal areas from reselection
+- optional temporary return-to-start behavior avoids treating the situation as exploration complete
+
+If the frontier set changes and a usable candidate appears again, the temporary return-to-start goal is canceled and frontier exploration resumes automatically.
+
+<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
+
+## QoS Configuration
+
+### Supported User-Facing Tokens
+
+Accepted durability values:
+
+- `transient_local`
+- `volatile`
+- `system_default`
+
+Accepted reliability values:
+
+- `reliable`
+- `best_effort`
+- `system_default`
+
+### Default QoS Profiles
+
+| Channel          | Default durability | Default reliability           | Default depth                 |
+| ---------------- | ------------------ | ----------------------------- | ----------------------------- |
+| Map              | `transient_local`  | `reliable`                    | `1`                           |
+| Global costmap   | `volatile`         | `reliable`                    | `10`                          |
+| Local costmap    | `volatile`         | `inherit` from global costmap | `inherit` from global costmap |
+| Completion event | `transient_local`  | `reliable`                    | `1`                           |
+
+The local costmap subscriber always uses volatile durability. Reliability and depth can either inherit the global costmap settings or be overridden explicitly.
+
+### Startup-Only Map Durability Autodetect
+
+If the correct map durability is not known during first integration, the package can probe it at startup.
+
+Behavior:
+
+1. Start with the configured map durability.
+2. Wait for `map_qos_autodetect_timeout_s`.
+3. If no map is received and the configured durability is `transient_local` or `volatile`, switch once to the opposite durability.
+4. If a map arrives, lock that choice and stop autodetect.
+5. If neither attempt succeeds, stop autodetect and report failure.
+
+This process is strictly startup-only. It does not keep switching at runtime.
+
+### Autodetect Log Meanings
+
+The node emits machine-parsable logs with a fixed prefix:
+
+```text
+[qos-autodetect] START selected=<durability> timeout=<seconds>
+[qos-autodetect] SWITCH selected=<durability> elapsed=<seconds>
+[qos-autodetect] COMPLETE result=<initial|fallback|failed> selected=<durability> elapsed=<seconds>
+```
+
+Interpretation:
+
+- `result=initial`: the first configured durability worked
+- `result=fallback`: the fallback durability worked
+- `result=failed`: neither attempt received a map within the startup window
+
+Recommended integration sequence:
+
+1. Enable autodetect once during bring-up.
+2. Read the `COMPLETE` log.
+3. Copy the working durability into your permanent parameter file.
+4. Disable autodetect for regular deployments.
+
+Suppression does not define its own QoS policy, but it is still relevant during first integration. If map QoS is wrong or the navigation stack comes up late, the explorer can observe unstable early behavior. The recommended pattern is:
+
+1. fix map QoS first
+2. use startup grace while validating navigation bring-up timing
+3. then tune suppression thresholds only after the transport layer is stable
+
+<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
+
+## Launch File Reference
+
+Launch file: `launch/frontier_explorer.launch.py`
+
+| Argument                        | Default                       | Effect                                              | Overrides YAML    |
+| ------------------------------- | ----------------------------- | --------------------------------------------------- | ----------------- |
+| `namespace`                     | `""`                          | Runs the node inside a ROS namespace                | No                |
+| `params_file`                   | packaged `config/params.yaml` | Selects the parameter file                          | Replaces the file |
+| `use_sim_time`                  | `false`                       | Passes standard ROS simulation time parameter       | Yes               |
+| `autostart`                     | `""`                          | Overrides the YAML `autostart` value when set       | Yes               |
+| `control_service_enabled`       | `""`                          | Overrides the YAML control-service setting when set | Yes               |
+| `log_level`                     | `info`                        | Sets node log severity                              | No                |
+| `map_qos_durability`            | `transient_local`             | Overrides map durability                            | Yes               |
+| `map_qos_autodetect_on_startup` | `false`                       | Enables startup autodetect                          | Yes               |
+| `map_qos_autodetect_timeout_s`  | `2.0`                         | Sets timeout per autodetect attempt                 | Yes               |
+| `costmap_qos_reliability`       | `reliable`                    | Overrides global costmap reliability                | Yes               |
+
+Notes:
+
+- `params_file` controls the full YAML source for the node.
+- the launch file only overrides `autostart`, `control_service_enabled`, the QoS-related parameters listed above, and `use_sim_time`
+- all other node behavior is defined by the selected parameter file
+- MRTSP solver selection, decision-map tuning, suppression behavior, startup grace, and suppressed-frontier waiting policy are configured in YAML, not through dedicated launch arguments
+
+<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
 
 <p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
 
@@ -1276,380 +1632,6 @@ This temporary return behavior is separate from `return_to_start_on_complete`. I
 
 <p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
 
-## Installation and Build
-
-### Dependencies
-
-Runtime and build dependencies include:
-
-- ROS 2 Jazzy
-- Nav2
-- `rclcpp`
-- `nav2_msgs`
-- `nav_msgs`
-- `geometry_msgs`
-- `std_msgs`
-- `visualization_msgs`
-- `tf2`
-- `tf2_ros`
-- `ament_cmake`
-
-### Clone
-
-```bash
-git clone https://github.com/mertgulerx/frontier-exploration-ros2.git
-cd frontier-exploration-ros2
-```
-
-### Install Dependencies
-
-```bash
-cd <your_workspace>
-rosdep install --from-paths src --ignore-src -r -y
-```
-
-### Build
-
-```bash
-cd <your_workspace>
-source /opt/ros/jazzy/setup.bash
-colcon build --packages-select frontier_exploration_ros2
-```
-
-<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
-
-## Quick Start
-
-> [!WARNING]
-> WFD-based frontier extraction tends to select points close to obstacles. The packaged config enables `goal_preemption_enabled` by default, and it is still strongly recommended to also enable `goal_skip_on_blocked_goal` in your runtime configuration.
-
-The packaged parameter file uses **MRTSP ordering** with **bounded-horizon DP**:
-
-```yaml
-mrtsp_solver: dp
-dp_solver_candidate_limit: 15
-dp_planning_horizon: 10
-```
-
-To use the **simple matrix traversal** path, set `mrtsp_solver: greedy`.
-
-Launch with the packaged parameter file:
-
-```bash
-ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py
-```
-
-The packaged launch file uses the packaged `config/params.yaml` defaults, and that baseline starts exploration immediately with `autostart:=true`.
-
-Override the parameter file:
-
-```bash
-ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
-  params_file:=/absolute/path/to/params.yaml
-```
-
-Run under a namespace:
-
-```bash
-ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
-  namespace:=robot1
-```
-
-Enable simulation time:
-
-```bash
-ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
-  use_sim_time:=true
-```
-
-Override startup map durability:
-
-```bash
-ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
-  map_qos_durability:=volatile
-```
-
-Enable startup-only map QoS autodetect:
-
-```bash
-ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
-  map_qos_autodetect_on_startup:=true \
-  map_qos_autodetect_timeout_s:=2.0
-```
-
-Keep the node in cold idle at launch time:
-
-```bash
-ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
-  autostart:=false
-```
-
-Disable the runtime control service while keeping automatic startup:
-
-```bash
-ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
-  autostart:=true \
-  control_service_enabled:=false
-```
-
-### Runtime Control
-
-When `control_service_enabled=true`, the node exposes a `control_exploration` service using `frontier_exploration_ros2/srv/ControlExploration`. This service provides an explicit runtime control surface for exploration lifecycle management. It is available even when exploration starts automatically, and is mainly useful for stop, delayed start/stop, cold-idle orchestration, and optional self-shutdown flows. If `autostart=false`, the node keeps this service enabled regardless of the configured `control_service_enabled` value so the cold-idle session can still be started.
-
-The packaged CLI helper provides a convenient terminal interface for that service:
-
-```bash
-frontier_exploration_ctl start
-frontier_exploration_ctl start -t 10
-frontier_exploration_ctl stop
-frontier_exploration_ctl stop -t 10
-frontier_exploration_ctl stop -q
-frontier_exploration_ctl stop -t 10 -q
-```
-
-Command semantics:
-
-- `start` enables exploration. If the node is in cold idle, it recreates the required subscriptions and timers, resets session-local exploration state, and begins exploration after fresh input data arrive.
-- `stop` disables exploration, prevents further goal dispatch, and returns the node to cold idle so that map and costmap traffic are no longer processed.
-- `-t <seconds>` schedules the request after the given delay instead of applying it immediately.
-- `stop -q` performs a normal stop sequence and then shuts down the explorer node process.
-
-If the control service is disabled while `autostart=true`, the CLI helper and RViz control panel cannot send runtime commands to that explorer instance.
-
-When the package is started with its own example launch file, `stop -q` also causes that launch session to exit after the explorer process stops. It does not attempt to terminate unrelated nodes, external launch parents, or arbitrary terminal sessions. Higher-level process orchestration remains outside the scope of this package.
-
-<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
-
-## Rviz Plugin
-
-`frontier_exploration_ros2` also provides an optional RViz plugin for start and stop exploration control directly from RViz.
-
-<img src="https://raw.githubusercontent.com/mertgulerx/readme-assets/main/frontier-exploration/frontier-exploration-ros2-rviz.png" alt="RViz plugin for frontier_exploration_ros2" width="50%" />
-
-For details, inspect plugin's own [README.md](plugin/frontier_exploration_ros2_rviz/README.md).
-
-<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
-
-## Integration Guide
-
-### Required Interfaces
-
-The node expects the following interfaces to exist in the running system:
-
-| Interface             | Default                  | Purpose                                                               |
-| --------------------- | ------------------------ | --------------------------------------------------------------------- |
-| Occupancy grid topic  | `map`                    | Frontier extraction and decision-map input                            |
-| Global costmap topic  | `global_costmap/costmap` | Reachability and blocked-goal filtering                               |
-| Local costmap topic   | `local_costmap/costmap`  | Near-field blocked-goal filtering                                     |
-| Nav2 action           | `navigate_to_pose`       | Goal execution                                                        |
-| TF transform          | `map -> base_footprint`  | Robot pose lookup                                                     |
-| Frontier marker topic | `explore/frontiers`      | Visualization                                                         |
-| Control service       | `control_exploration`    | Optional runtime start, stop, schedule, and quit control when enabled |
-
-### Topic and Frame Mapping
-
-For most integrations, only these fields need to be remapped:
-
-- `map_topic`
-- `costmap_topic`
-- `local_costmap_topic`
-- `navigate_to_pose_action_name`
-- `global_frame`
-- `robot_base_frame`
-- `frontier_marker_topic`
-- `selected_frontier_topic`
-- `optimized_map_topic`
-
-All defaults are relative topic names inside the package-owned baseline config. That keeps the package namespace-friendly in multi-robot deployments. If your system uses absolute topic names, provide them explicitly in your parameter file.
-
-### Nav2 Integration
-
-The public node is designed around `nav2_msgs/action/NavigateToPose`.
-
-The explorer:
-
-- waits for the action server with a bounded timeout
-- dispatches one frontier goal at a time
-- receives feedback and result callbacks
-- can request cancelation during preemption flows
-
-If your stack wraps Nav2 behind a namespace or a remapped action name, update `navigate_to_pose_action_name` accordingly.
-
-If suppression is enabled, repeated rejected goals, aborted goals, or no-progress timeout cancelations can temporarily remove a frontier area from selection.
-
-### Multi-Robot and Namespace Use
-
-The launch file accepts a `namespace` argument and all packaged topic defaults are relative. That makes the package suitable for:
-
-- one explorer per robot namespace
-- one Nav2 stack per robot namespace
-- one map and costmap graph per robot namespace
-
-Example:
-
-```bash
-ros2 launch frontier_exploration_ros2 frontier_explorer.launch.py \
-  namespace:=robot1 \
-  params_file:=/absolute/path/to/robot1_frontier.yaml
-```
-
-### Completion Event Consumption
-
-When `completion_event_enabled` is `true`, the explorer publishes one `std_msgs/msg/Empty` message when frontier exhaustion is observed.
-
-Completion event QoS:
-
-- durability: `transient_local`
-- reliability: `reliable`
-- depth: `1`
-
-Design intent:
-
-- the explorer reports completion
-- external systems decide what to do next
-- late-joining subscribers can still see the latest completion event while the explorer node remains alive
-
-Typical consumers include:
-
-- map export services
-- docking or return-home supervisors
-- mission sequencers
-- test automation scripts
-
-Suppressed return-to-start is different. If `all_frontiers_suppressed_behavior=return_to_start`, the robot may temporarily go back to the start pose while waiting for new frontier opportunities, but that does not publish a completion event and does not mean exploration has finished.
-
-### Reusing the C++ Core Library
-
-The package exports a reusable C++ target:
-
-```cmake
-find_package(frontier_exploration_ros2 REQUIRED)
-
-add_executable(my_explorer src/my_explorer.cpp)
-target_link_libraries(my_explorer
-  frontier_exploration_ros2::frontier_exploration_ros2_core
-)
-```
-
-The core separates the exploration logic from the public node for custom ROS 2 integrations.
-
-### Suppression Behavior in Practice
-
-Suppression is most useful in systems where the same frontier can fail repeatedly for operational reasons that are not visible in the occupancy map alone. Common examples include:
-
-- a navigation stack that comes up later than the explorer
-- a planner that keeps rejecting a narrow or unstable goal area
-- a controller that stalls near clutter without making meaningful progress
-- a temporary map or costmap inconsistency during bring-up
-
-In those cases, suppression adds three controls:
-
-- startup grace delays suppression until the initial system bring-up window has passed
-- failure memory temporarily removes repeatedly failing goal areas from reselection
-- optional temporary return-to-start behavior avoids treating the situation as exploration complete
-
-If the frontier set changes and a usable candidate appears again, the temporary return-to-start goal is canceled and frontier exploration resumes automatically.
-
-<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
-
-## QoS Configuration
-
-### Supported User-Facing Tokens
-
-Accepted durability values:
-
-- `transient_local`
-- `volatile`
-- `system_default`
-
-Accepted reliability values:
-
-- `reliable`
-- `best_effort`
-- `system_default`
-
-### Default QoS Profiles
-
-| Channel          | Default durability | Default reliability           | Default depth                 |
-| ---------------- | ------------------ | ----------------------------- | ----------------------------- |
-| Map              | `transient_local`  | `reliable`                    | `1`                           |
-| Global costmap   | `volatile`         | `reliable`                    | `10`                          |
-| Local costmap    | `volatile`         | `inherit` from global costmap | `inherit` from global costmap |
-| Completion event | `transient_local`  | `reliable`                    | `1`                           |
-
-The local costmap subscriber always uses volatile durability. Reliability and depth can either inherit the global costmap settings or be overridden explicitly.
-
-### Startup-Only Map Durability Autodetect
-
-If the correct map durability is not known during first integration, the package can probe it at startup.
-
-Behavior:
-
-1. Start with the configured map durability.
-2. Wait for `map_qos_autodetect_timeout_s`.
-3. If no map is received and the configured durability is `transient_local` or `volatile`, switch once to the opposite durability.
-4. If a map arrives, lock that choice and stop autodetect.
-5. If neither attempt succeeds, stop autodetect and report failure.
-
-This process is strictly startup-only. It does not keep switching at runtime.
-
-### Autodetect Log Meanings
-
-The node emits machine-parsable logs with a fixed prefix:
-
-```text
-[qos-autodetect] START selected=<durability> timeout=<seconds>
-[qos-autodetect] SWITCH selected=<durability> elapsed=<seconds>
-[qos-autodetect] COMPLETE result=<initial|fallback|failed> selected=<durability> elapsed=<seconds>
-```
-
-Interpretation:
-
-- `result=initial`: the first configured durability worked
-- `result=fallback`: the fallback durability worked
-- `result=failed`: neither attempt received a map within the startup window
-
-Recommended integration sequence:
-
-1. Enable autodetect once during bring-up.
-2. Read the `COMPLETE` log.
-3. Copy the working durability into your permanent parameter file.
-4. Disable autodetect for regular deployments.
-
-Suppression does not define its own QoS policy, but it is still relevant during first integration. If map QoS is wrong or the navigation stack comes up late, the explorer can observe unstable early behavior. The recommended pattern is:
-
-1. fix map QoS first
-2. use startup grace while validating navigation bring-up timing
-3. then tune suppression thresholds only after the transport layer is stable
-
-<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
-
-## Launch File Reference
-
-Launch file: `launch/frontier_explorer.launch.py`
-
-| Argument                        | Default                       | Effect                                              | Overrides YAML    |
-| ------------------------------- | ----------------------------- | --------------------------------------------------- | ----------------- |
-| `namespace`                     | `""`                          | Runs the node inside a ROS namespace                | No                |
-| `params_file`                   | packaged `config/params.yaml` | Selects the parameter file                          | Replaces the file |
-| `use_sim_time`                  | `false`                       | Passes standard ROS simulation time parameter       | Yes               |
-| `autostart`                     | `""`                          | Overrides the YAML `autostart` value when set       | Yes               |
-| `control_service_enabled`       | `""`                          | Overrides the YAML control-service setting when set | Yes               |
-| `log_level`                     | `info`                        | Sets node log severity                              | No                |
-| `map_qos_durability`            | `transient_local`             | Overrides map durability                            | Yes               |
-| `map_qos_autodetect_on_startup` | `false`                       | Enables startup autodetect                          | Yes               |
-| `map_qos_autodetect_timeout_s`  | `2.0`                         | Sets timeout per autodetect attempt                 | Yes               |
-| `costmap_qos_reliability`       | `reliable`                    | Overrides global costmap reliability                | Yes               |
-
-Notes:
-
-- `params_file` controls the full YAML source for the node.
-- the launch file only overrides `autostart`, `control_service_enabled`, the QoS-related parameters listed above, and `use_sim_time`
-- all other node behavior is defined by the selected parameter file
-- MRTSP solver selection, decision-map tuning, suppression behavior, startup grace, and suppressed-frontier waiting policy are configured in YAML, not through dedicated launch arguments
-
-<p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
-
 ## Parameter Reference
 
 Parameters are declared in `frontier_explorer_node.cpp`.
@@ -1828,9 +1810,9 @@ frontier_explorer:
     # --------------- GENERAL --------------- #
 
     # Refresh Rate of the package.
-    # `0.5` is recommended. Use `1.0` if your robot is very fast.
-    # Use `0.25` if your robot is slow and you want lowest CPU usage.
-    map_processing_rate_hz: 0.5
+    # `1.0` is recommended. Use `2.0` if your robot is very fast.
+    # Use `0.50` if your mapping is slow and you want lowest CPU usage.
+    map_processing_rate_hz: 1.0
 
     # Start exploration immediately at launch.
     autostart: true
@@ -1862,7 +1844,12 @@ frontier_explorer:
 
     # Replan while navigating if target-pose visible reveal gain for active goal is exhausted.
     # Disable if you are having performance issues.
-    goal_preemption_enabled: true
+    goal_preemption_enabled:
+      true
+
+      # Minimum seconds between consecutive goal preemption attempts.
+    # Also effects performance.
+    goal_preemption_min_interval_s: 2.0
 
     # Skip the active frontier goal if it becomes blocked.
     goal_skip_on_blocked_goal: true
@@ -1902,13 +1889,13 @@ frontier_explorer:
     # It does not command the robot directly; it estimates how fast a frontier
     # can be reached when building the first row of the cost matrix.
     # Larger values reduce the time penalty of distant frontiers.
-    max_linear_speed_vmax: 0.50
+    max_linear_speed_vmax: 1.0
 
     # Max angular speed used in the heading-change part of time lower bound.
     # This matters most when candidate frontiers require large initial turns.
     # Larger values reduce the penalty of reorientation-heavy options.
     # Example: low values prefer frontiers already near the current heading.
-    max_angular_speed_wmax: 1.0
+    max_angular_speed_wmax: 0.50
 
     # Effective sensor range subtracted inside the paper's path-cost term.
     # Larger values reduce the effective traversal penalty between frontiers.
@@ -1969,9 +1956,6 @@ frontier_explorer:
     dilation_kernel_radius_cells: 1
 
     # --------------- Preemption --------------- #
-
-    # Minimum seconds between consecutive goal preemption attempts.
-    goal_preemption_min_interval_s: 2.0
 
     # Treat the current frontier as complete once the robot is this close to it; 0.0 disables this shortcut.
     # This close-enough guard also works when visible-gain preemption is disabled, but obstacle-avoidance-heavy robots should use it carefully because large values can end a frontier too early and trigger wrong exploration choices.
