@@ -615,7 +615,7 @@ TEST(PreemptionFlowTests, FrontierCostStatusUsesConfiguredOccupancyThreshold)
   EXPECT_TRUE(core.frontier_cost_status(target).has_value());
 }
 
-TEST(PreemptionFlowTests, PreemptionReplacementDispatchesImmediatelyWhenSettleEnabled)
+TEST(PreemptionFlowTests, PreemptionCancelsActiveGoalAndDefersReselectionWhenSettleEnabled)
 {
   std::vector<std::string> info_logs;
   FrontierExplorerCoreParams params;
@@ -682,8 +682,8 @@ TEST(PreemptionFlowTests, PreemptionReplacementDispatchesImmediatelyWhenSettleEn
 
   core.consider_preempt_active_goal("map");
 
-  EXPECT_EQ(dispatch_calls, 1);
-  EXPECT_EQ(fake_handle->cancel_calls, 0);
+  EXPECT_EQ(dispatch_calls, 0);
+  EXPECT_EQ(fake_handle->cancel_calls, 1);
   EXPECT_TRUE(core.pending_frontier_sequence.empty());
   EXPECT_FALSE(core.awaiting_map_refresh);
   EXPECT_FALSE(core.post_goal_settle_active);
@@ -895,7 +895,7 @@ TEST(PreemptionFlowTests, VisibleGainGateSkipsSmallClusterEvenBelowMinRevealThre
   EXPECT_TRUE(core->pending_frontier_sequence.empty());
 }
 
-TEST(PreemptionFlowTests, VisibleGainGateFallsBackToSnapshotReselectionWhenGoalGainIsExhausted)
+TEST(PreemptionFlowTests, VisibleGainExhaustionCancelsAndDefersSnapshotReselection)
 {
   auto core = make_preemption_core();
   auto fake_handle = std::make_shared<FakeGoalHandle>();
@@ -936,11 +936,13 @@ TEST(PreemptionFlowTests, VisibleGainGateFallsBackToSnapshotReselectionWhenGoalG
 
   core->consider_preempt_active_goal("map");
 
-  EXPECT_EQ(frontier_search_calls, 1);
-  EXPECT_EQ(dispatch_calls, 1);
+  EXPECT_EQ(frontier_search_calls, 0);
+  EXPECT_EQ(dispatch_calls, 0);
+  EXPECT_EQ(fake_handle->cancel_calls, 1);
+  EXPECT_TRUE(core->pending_frontier_sequence.empty());
 }
 
-TEST(PreemptionFlowTests, LowGainSnapshotReselectionIsThrottledByPreemptionInterval)
+TEST(PreemptionFlowTests, LowGainPreemptionCancelsWithoutSnapshotReselection)
 {
   auto core = make_preemption_core();
   auto fake_handle = std::make_shared<FakeGoalHandle>();
@@ -952,14 +954,10 @@ TEST(PreemptionFlowTests, LowGainSnapshotReselectionIsThrottledByPreemptionInter
   core->params.goal_preemption_lidar_ray_step_deg = 1.0;
   core->params.goal_preemption_lidar_min_reveal_length_m = 0.5;
   core->replacement_required_hits = 1;
+
   const FrontierCandidate active_frontier{{4.0, 5.0}, {3.0, 5.0}, 8};
   core->active_goal_frontier = active_frontier;
   core->active_goal_frontiers = {*core->active_goal_frontier};
-
-  int64_t now_ns = 5'000'000'000;
-  core->callbacks.now_ns = [&now_ns]() {
-      return now_ns;
-    };
 
   auto map_msg = build_grid(12, 12, 0);
   core->map = OccupancyGrid2d(map_msg);
@@ -981,21 +979,10 @@ TEST(PreemptionFlowTests, LowGainSnapshotReselectionIsThrottledByPreemptionInter
     };
 
   core->consider_preempt_active_goal("map");
-  EXPECT_EQ(frontier_search_calls, 1);
 
-  core->frontier_snapshot.reset();
-  core->map_generation += 1;
-  core->decision_map_generation += 1;
-  now_ns += 100'000'000;
-  core->consider_preempt_active_goal("map");
-  EXPECT_EQ(frontier_search_calls, 1);
-
-  core->frontier_snapshot.reset();
-  core->map_generation += 1;
-  core->decision_map_generation += 1;
-  now_ns += 500'000'000;
-  core->consider_preempt_active_goal("map");
-  EXPECT_EQ(frontier_search_calls, 2);
+  EXPECT_EQ(frontier_search_calls, 0);
+  EXPECT_EQ(fake_handle->cancel_calls, 1);
+  EXPECT_TRUE(core->pending_frontier_sequence.empty());
 }
 
 TEST(PreemptionFlowTests, CompletionDistanceTreatsNearFrontierAsCompleteWithVisibleGainGate)
@@ -1389,7 +1376,7 @@ TEST(PreemptionFlowTests, ReturnToStartCompletedStopsFurtherFrontierSearch)
   EXPECT_EQ(frontier_search_calls, 0);
 }
 
-TEST(PreemptionFlowTests, GoalSucceededWaitsForCooldownThenProgressesWithoutMapUpdates)
+TEST(PreemptionFlowTests, GoalSucceededWaitsForCooldownAndMapUpdateBeforeProgressing)
 {
   FrontierExplorerCoreParams params;
   params.post_goal_settle_enabled = true;
@@ -1460,7 +1447,7 @@ TEST(PreemptionFlowTests, GoalSucceededWaitsForCooldownThenProgressesWithoutMapU
   EXPECT_EQ(dispatch_calls, 1);
 
   core.processPendingMapUpdate();
-  EXPECT_EQ(dispatch_calls, 2);
+  EXPECT_EQ(dispatch_calls, 1);
 }
 
 TEST(PreemptionFlowTests, GoalSucceededRedispatchesImmediatelyWhenPostGoalSettleDisabled)
