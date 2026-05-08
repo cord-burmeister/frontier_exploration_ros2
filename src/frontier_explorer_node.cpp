@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "frontier_exploration_ros2/frontier_explorer_node.hpp"
+#include "frontier_exploration_ros2/nav2_compat.hpp"
 
 #include <action_msgs/msg/goal_status.hpp>
 #include <action_msgs/srv/cancel_goal.hpp>
@@ -1326,9 +1327,9 @@ void FrontierExplorerNode::dispatchGoalRequest(const GoalDispatchRequest & reque
       int error_code = 0;
       std::string error_msg;
       if (wrapped_result.result) {
-        // Nav2 result payload may be absent for some transport/error paths.
-        error_code = wrapped_result.result->error_code;
-        error_msg = wrapped_result.result->error_msg;
+        // Nav2 result fields differ across ROS distros; extract when available.
+        error_code = compat::extractNav2ResultErrorCode(*wrapped_result.result);
+        error_msg = compat::extractNav2ResultErrorMessage(*wrapped_result.result);
       }
 
       core_->get_result_callback(
