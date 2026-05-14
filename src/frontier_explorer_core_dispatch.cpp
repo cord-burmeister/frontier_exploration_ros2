@@ -174,7 +174,7 @@ void FrontierExplorerCore::try_send_next_goal()
     frontier_sequence,
     *current_pose,
     "Sending frontier goal (" + selection.mode + "): " + describe_frontier(frontier_sequence.front()),
-    escape_mode_active);
+    false);
 }
 
 void FrontierExplorerCore::reset_exploration_runtime_state(bool clear_maps)
@@ -910,19 +910,24 @@ bool FrontierExplorerCore::send_frontier_goal(
     dispatch_sequence.push_back(frontier_sequence[index]);
   }
 
-  const auto goal_pose = build_dispatch_goal_pose(
+  const auto dispatch_goal_pose = build_dispatch_goal_pose(
     dispatch_sequence.front(),
     current_pose,
     bypass_min_distance_dispatch);
+  if (!dispatch_goal_pose.has_value()) {
+    callbacks.log_info(
+      "No dispatchable frontier goal satisfies the minimum-distance constraint; waiting for updated map data");
+    return false;
+  }
   if (debug_outputs_enabled()) {
-    callbacks.publish_selected_frontier_pose(goal_pose);
+    callbacks.publish_selected_frontier_pose(dispatch_goal_pose.value());
   }
   const std::string dispatch_description = dispatch_index == 0U ?
     description :
     "Sending frontier goal after blocked-goal skip: " + describe_frontier(dispatch_sequence.front());
   // Frontier mode dispatches only the first element from the selected sequence.
   return send_pose_goal(
-    goal_pose,
+    dispatch_goal_pose.value(),
     "frontier",
     dispatch_sequence.front(),
     dispatch_sequence,

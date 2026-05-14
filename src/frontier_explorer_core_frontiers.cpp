@@ -492,7 +492,7 @@ geometry_msgs::msg::PoseStamped FrontierExplorerCore::build_goal_pose(
   return goal_pose;
 }
 
-geometry_msgs::msg::PoseStamped FrontierExplorerCore::build_dispatch_goal_pose(
+std::optional<geometry_msgs::msg::PoseStamped> FrontierExplorerCore::build_dispatch_goal_pose(
   const FrontierLike & target_frontier,
   const geometry_msgs::msg::Pose & current_pose,
   bool bypass_min_distance_dispatch) const
@@ -555,12 +555,18 @@ geometry_msgs::msg::PoseStamped FrontierExplorerCore::build_dispatch_goal_pose(
       }
 
       const auto local_cost = world_point_cost(local_costmap, world_point);
-      if (local_cost.has_value() && *local_cost >= params.occ_threshold) {
+      if (
+        local_cost.has_value() &&
+        *local_cost != static_cast<int>(OccupancyGrid2d::CostValues::FreeSpace))
+      {
         return false;
       }
 
       const auto global_cost = world_point_cost(costmap, world_point);
-      if (global_cost.has_value() && *global_cost >= params.occ_threshold) {
+      if (
+        global_cost.has_value() &&
+        *global_cost != static_cast<int>(OccupancyGrid2d::CostValues::FreeSpace))
+      {
         return false;
       }
 
@@ -606,7 +612,7 @@ geometry_msgs::msg::PoseStamped FrontierExplorerCore::build_dispatch_goal_pose(
     }
   }
 
-  return fallback_goal_pose;
+  return std::nullopt;
 }
 
 std::vector<geometry_msgs::msg::PoseStamped> FrontierExplorerCore::build_goal_pose_sequence(

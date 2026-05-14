@@ -218,7 +218,7 @@ public:
     const FrontierLike & target_frontier,
     const geometry_msgs::msg::Pose & current_pose) const;
 
-  geometry_msgs::msg::PoseStamped build_dispatch_goal_pose(
+  std::optional<geometry_msgs::msg::PoseStamped> build_dispatch_goal_pose(
     const FrontierLike & target_frontier,
     const geometry_msgs::msg::Pose & current_pose,
     bool bypass_min_distance_dispatch = false) const;
