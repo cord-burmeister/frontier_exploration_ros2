@@ -108,7 +108,7 @@ frontier_explorer:
 
     # Enable temporary suppression for frontiers that repeatedly fail or stall.
     # Use if you are having issues with SLAM or Nav2.
-    frontier_suppression_enabled: false
+    frontier_suppression_enabled: true
 
     # Behavior when frontiers exist but all of them are temporarily suppressed: stay or return_to_start. 
     # Requires `frontier_suppression_enabled: true`
