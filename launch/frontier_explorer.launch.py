@@ -1,3 +1,4 @@
+from ament_index_python.packages import get_package_share_directory
 from pathlib import Path
 from typing import Any
 
@@ -49,9 +50,8 @@ def _create_frontier_actions(context):
 
 
 def generate_launch_description():
-    # Project-specific defaults are kept in the repository root config folder.
-    # This path is intentionally relative to the project root.
-    default_params = Path("config/frontier_exploration_ros2/config.yaml")
+    pkg_share = get_package_share_directory("frontier_exploration_ros2")
+    default_params = (Path(pkg_share) / "config" / "params.yaml")
 
     return LaunchDescription(
         [
@@ -108,8 +108,6 @@ def generate_launch_description():
                 default_value="reliable",
                 description="Costmap reliability: reliable | best_effort | system_default.",
             ),
-            # Packaged params are intentionally generic and expected to be adapted
-            # for robot-specific frames, topics, and planner/controller behavior.
             OpaqueFunction(function=_create_frontier_actions),
         ]
     )
