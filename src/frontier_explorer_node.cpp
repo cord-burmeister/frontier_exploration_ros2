@@ -1201,21 +1201,25 @@ std::optional<geometry_msgs::msg::Pose> FrontierExplorerNode::getCurrentPose()
 void FrontierExplorerNode::publishFrontierMarkers(const FrontierSequence & frontiers)
 {
   visualization_msgs::msg::MarkerArray marker_array;
+  const auto publish_stamp = this->now();
 
   visualization_msgs::msg::Marker clear_marker;
   // Always clear previous marker namespace first to avoid stale points in RViz.
   clear_marker.header.frame_id = params_.global_frame;
+  clear_marker.header.stamp = publish_stamp;
   clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
   marker_array.markers.push_back(clear_marker);
 
   if (!frontiers.empty()) {
     visualization_msgs::msg::Marker marker;
     marker.header.frame_id = params_.global_frame;
+    marker.header.stamp = publish_stamp;
     marker.ns = "frontier_frontiers_primitive";
     marker.id = 0;
     // POINTS renders as screen-aligned squares in RViz, matching the MRTSP reference package.
     marker.type = visualization_msgs::msg::Marker::POINTS;
     marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.frame_locked = true;
     marker.scale.x = params_.frontier_marker_scale;
     marker.scale.y = params_.frontier_marker_scale;
     marker.color.a = 1.0;
