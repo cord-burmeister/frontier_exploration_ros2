@@ -555,18 +555,12 @@ std::optional<geometry_msgs::msg::PoseStamped> FrontierExplorerCore::build_dispa
       }
 
       const auto local_cost = world_point_cost(local_costmap, world_point);
-      if (
-        local_cost.has_value() &&
-        *local_cost != static_cast<int>(OccupancyGrid2d::CostValues::FreeSpace))
-      {
+      if (local_cost.has_value() && *local_cost >= params.occ_threshold) {
         return false;
       }
 
       const auto global_cost = world_point_cost(costmap, world_point);
-      if (
-        global_cost.has_value() &&
-        *global_cost != static_cast<int>(OccupancyGrid2d::CostValues::FreeSpace))
-      {
+      if (global_cost.has_value() && *global_cost >= params.occ_threshold) {
         return false;
       }
 

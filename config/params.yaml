@@ -108,7 +108,7 @@ frontier_explorer:
 
     # Enable temporary suppression for frontiers that repeatedly fail or stall.
     # Use if you are having issues with SLAM or Nav2.
-    frontier_suppression_enabled: true
+    frontier_suppression_enabled: false
 
     # Behavior when frontiers exist but all of them are temporarily suppressed: stay or return_to_start. 
     # Requires `frontier_suppression_enabled: true`
@@ -156,7 +156,7 @@ frontier_explorer:
     # Minimum distance before a frontier is considered a valid target.
     # Used for dispatch not filterization.
     # Recommended value: 2.5x size of robot's radius
-    frontier_selection_min_distance: 1.2
+    frontier_selection_min_distance: 0.8
 
     # Distance used to treat a frontier region as recently visited.
     # Use if you are having navigation loops.
@@ -170,7 +170,7 @@ frontier_explorer:
     # Higher values reduce local dithering but can skip useful nearby openings.
     # Example: 0.25 allows immediate local cleanup, 0.5 forces a small commit distance.
     # Recommended value: 2.5x size of robot's radius
-    frontier_candidate_min_goal_distance_m: 1.2
+    frontier_candidate_min_goal_distance_m: 0.8
 
     # Occupancy threshold applied to the global costmap during frontier validation.
     # Neighbor cells at or above this cost are treated as blocked for frontier tests.
