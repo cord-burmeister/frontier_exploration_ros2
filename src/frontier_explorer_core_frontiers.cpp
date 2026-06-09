@@ -492,7 +492,7 @@ geometry_msgs::msg::PoseStamped FrontierExplorerCore::build_goal_pose(
   return goal_pose;
 }
 
-std::optional<geometry_msgs::msg::PoseStamped> FrontierExplorerCore::build_dispatch_goal_pose(
+geometry_msgs::msg::PoseStamped FrontierExplorerCore::build_dispatch_goal_pose(
   const FrontierLike & target_frontier,
   const geometry_msgs::msg::Pose & current_pose,
   bool bypass_min_distance_dispatch) const
@@ -606,7 +606,7 @@ std::optional<geometry_msgs::msg::PoseStamped> FrontierExplorerCore::build_dispa
     }
   }
 
-  return std::nullopt;
+  return fallback_goal_pose;
 }
 
 std::vector<geometry_msgs::msg::PoseStamped> FrontierExplorerCore::build_goal_pose_sequence(
