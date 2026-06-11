@@ -38,7 +38,7 @@
 
 Built and validated with ROS 2 Jazzy, it is still written with flexibility in mind. It fits naturally into Nav2-based projects, custom ROS 2 systems, and broader robotics workflows without making the exploration logic feel locked to a narrow setup.
 
-More than a basic frontier package, it brings smarter exploration decisions and a stronger overall design. With map optimization before frontier detection, target ordering inspired by **Minimum Ratio Traveling Salesman Problem (MRTSP)**, and an efficient modern C++ implementation, it offers a more capable and more refined exploration experience.
+More than a basic frontier package, it brings smarter exploration decisions and a stronger overall design. With map optimization before frontier detection, target ordering inspired by Minimum Ratio Traveling Salesman Problem (MRTSP), and an efficient modern C++ implementation, it offers a more capable and more refined exploration experience.
 
 The MRTSP path also supports a bounded-horizon Dynamic Programming solver. It scores frontier candidates, keeps the strongest pool, searches a short route ahead, and dispatches only the first target so exploration stays fast and responsive.
 
