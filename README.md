@@ -26,7 +26,7 @@
       </a>
     </td>
     <td align="center">
-      <a href="https://github.com/cord-burmeister">
+      <a href="https://github.com/TsXor">
         <img src="https://github.com/TsXor.png" width="48" alt="cord-burmeister"/><br>
         <sub><b>TsXor</b></sub>
       </a>
