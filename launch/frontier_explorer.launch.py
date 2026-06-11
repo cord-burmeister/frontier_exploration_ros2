@@ -9,6 +9,20 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 
+def _parse_optional_bool(value: str, arg_name: str):
+    normalized = value.strip().lower()
+    if normalized == "":
+        return None
+    if normalized in ("true", "1", "yes", "on"):
+        return True
+    if normalized in ("false", "0", "no", "off"):
+        return False
+    raise RuntimeError(
+        f"Invalid boolean value for launch argument '{arg_name}': '{value}'. "
+        "Expected one of: true/false, 1/0, yes/no, on/off"
+    )
+
+
 def _create_frontier_actions(context):
     namespace = LaunchConfiguration("namespace")
     params_file = LaunchConfiguration("params_file")
@@ -28,10 +42,16 @@ def _create_frontier_actions(context):
         "map_qos_autodetect_timeout_s": map_qos_autodetect_timeout_s,
         "costmap_qos_reliability": costmap_qos_reliability,
     }
-    if autostart_value != "":
-        frontier_overrides["autostart"] = autostart_value
-    if control_service_enabled_value != "":
-        frontier_overrides["control_service_enabled"] = control_service_enabled_value
+    autostart_override = _parse_optional_bool(autostart_value, "autostart")
+    if autostart_override is not None:
+        frontier_overrides["autostart"] = autostart_override
+
+    control_service_enabled_override = _parse_optional_bool(
+        control_service_enabled_value,
+        "control_service_enabled",
+    )
+    if control_service_enabled_override is not None:
+        frontier_overrides["control_service_enabled"] = control_service_enabled_override
 
     frontier_node = Node(
         package="frontier_exploration_ros2",

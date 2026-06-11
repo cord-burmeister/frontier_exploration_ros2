@@ -24,6 +24,7 @@ limitations under the License.
 #include <string>
 
 #include <geometry_msgs/msg/quaternion.hpp>
+#include <action_msgs/msg/goal_status.hpp>
 
 #include "frontier_exploration_ros2/frontier_types.hpp"
 
@@ -48,10 +49,35 @@ inline std::string normalize_suppressed_behavior(std::string value)
 
 inline std::string status_to_string(int status)
 {
-  // Keep status logging allocation/localized in one helper.
+  const char * name = "UNKNOWN_STATUS";
+  switch (status) {
+    case action_msgs::msg::GoalStatus::STATUS_UNKNOWN:
+      name = "STATUS_UNKNOWN";
+      break;
+    case action_msgs::msg::GoalStatus::STATUS_ACCEPTED:
+      name = "STATUS_ACCEPTED";
+      break;
+    case action_msgs::msg::GoalStatus::STATUS_EXECUTING:
+      name = "STATUS_EXECUTING";
+      break;
+    case action_msgs::msg::GoalStatus::STATUS_CANCELING:
+      name = "STATUS_CANCELING";
+      break;
+    case action_msgs::msg::GoalStatus::STATUS_SUCCEEDED:
+      name = "STATUS_SUCCEEDED";
+      break;
+    case action_msgs::msg::GoalStatus::STATUS_CANCELED:
+      name = "STATUS_CANCELED";
+      break;
+    case action_msgs::msg::GoalStatus::STATUS_ABORTED:
+      name = "STATUS_ABORTED";
+      break;
+    default:
+      break;
+  }
+
   std::ostringstream oss;
-  // Keep numeric status visible for unknown/new action status values.
-  oss << status;
+  oss << name << " (" << status << ")";
   return oss.str();
 }
 

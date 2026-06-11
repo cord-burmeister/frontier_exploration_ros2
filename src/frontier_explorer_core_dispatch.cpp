@@ -910,8 +910,8 @@ bool FrontierExplorerCore::send_frontier_goal(
     dispatch_sequence.push_back(frontier_sequence[index]);
   }
 
-  const auto goal_pose = build_dispatch_goal_pose(
-    dispatch_sequence.front(),
+const auto goal_pose = build_dispatch_goal_pose(
+      dispatch_sequence.front(),
     current_pose,
     bypass_min_distance_dispatch);
   if (debug_outputs_enabled()) {

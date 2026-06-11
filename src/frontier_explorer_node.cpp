@@ -15,6 +15,7 @@ limitations under the License.
 */
 
 #include "frontier_exploration_ros2/frontier_explorer_node.hpp"
+#include "frontier_exploration_ros2/nav2_compat.hpp"
 
 #include <action_msgs/msg/goal_status.hpp>
 #include <action_msgs/srv/cancel_goal.hpp>
@@ -1200,21 +1201,25 @@ std::optional<geometry_msgs::msg::Pose> FrontierExplorerNode::getCurrentPose()
 void FrontierExplorerNode::publishFrontierMarkers(const FrontierSequence & frontiers)
 {
   visualization_msgs::msg::MarkerArray marker_array;
+  const auto publish_stamp = this->now();
 
   visualization_msgs::msg::Marker clear_marker;
   // Always clear previous marker namespace first to avoid stale points in RViz.
   clear_marker.header.frame_id = params_.global_frame;
+  clear_marker.header.stamp = publish_stamp;
   clear_marker.action = visualization_msgs::msg::Marker::DELETEALL;
   marker_array.markers.push_back(clear_marker);
 
   if (!frontiers.empty()) {
     visualization_msgs::msg::Marker marker;
     marker.header.frame_id = params_.global_frame;
+    marker.header.stamp = publish_stamp;
     marker.ns = "frontier_frontiers_primitive";
     marker.id = 0;
     // POINTS renders as screen-aligned squares in RViz, matching the MRTSP reference package.
     marker.type = visualization_msgs::msg::Marker::POINTS;
     marker.action = visualization_msgs::msg::Marker::ADD;
+    marker.frame_locked = true;
     marker.scale.x = params_.frontier_marker_scale;
     marker.scale.y = params_.frontier_marker_scale;
     marker.color.a = 1.0;
@@ -1326,9 +1331,9 @@ void FrontierExplorerNode::dispatchGoalRequest(const GoalDispatchRequest & reque
       int error_code = 0;
       std::string error_msg;
       if (wrapped_result.result) {
-        // Nav2 result payload may be absent for some transport/error paths.
-        error_code = wrapped_result.result->error_code;
-        error_msg = wrapped_result.result->error_msg;
+        // Nav2 result fields differ across ROS distros; extract when available.
+        error_code = compat::extractNav2ResultErrorCode(*wrapped_result.result);
+        error_msg = compat::extractNav2ResultErrorMessage(*wrapped_result.result);
       }
 
       core_->get_result_callback(
