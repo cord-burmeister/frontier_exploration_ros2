@@ -40,7 +40,7 @@ Built and validated with ROS 2 Jazzy, it is still written with flexibility in mi
 
 More than a basic frontier package, it brings smarter exploration decisions and a stronger overall design. With map optimization before frontier detection, target ordering inspired by **Minimum Ratio Traveling Salesman Problem (MRTSP)**, and an efficient modern C++ implementation, it offers a more capable and more refined exploration experience.
 
-The MRTSP path also supports a **bounded-horizon Dynamic Programming** solver. It scores **frontier candidates**, keeps the **strongest pool**, searches a **short route ahead**, and dispatches only the **first target** so exploration stays fast and responsive.
+The MRTSP path also supports a bounded-horizon Dynamic Programming solver. It scores frontier candidates, keeps the strongest pool, searches a short route ahead, and dispatches only the first target so exploration stays fast and responsive.
 
 It also improves long-running exploration with reusable caches, less repeated computation, and controlled memory use. Clear runtime controls for preemption, suppression, QoS, and completion handling make it easier to use in real projects.
 
