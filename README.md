@@ -9,6 +9,31 @@
 [![Build](https://img.shields.io/github/actions/workflow/status/mertgulerx/frontier-exploration-ros2/jazzy-build.yml?branch=main&style=for-the-badge&label=build)](https://github.com/mertgulerx/frontier-exploration-ros2/actions/workflows/jazzy-build.yml)
 [![Test](https://img.shields.io/github/actions/workflow/status/mertgulerx/frontier-exploration-ros2/jazzy-test.yml?branch=main&style=for-the-badge&label=test)](https://github.com/mertgulerx/frontier-exploration-ros2/actions/workflows/jazzy-test.yml)
 
+### Contributors
+
+<table>
+  <tr>
+    <td align="center">
+      <a href="https://github.com/mertgulerx">
+        <img src="https://github.com/mertgulerx.png" width="48" alt="mertgulerx"/><br>
+        <sub><b>mertgulerx</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/cord-burmeister">
+        <img src="https://github.com/cord-burmeister.png" width="48" alt="cord-burmeister"/><br>
+        <sub><b>cord-burmeister</b></sub>
+      </a>
+    </td>
+    <td align="center">
+      <a href="https://github.com/cord-burmeister">
+        <img src="https://github.com/TsXor.png" width="48" alt="cord-burmeister"/><br>
+        <sub><b>TsXor</b></sub>
+      </a>
+    </td>
+  </tr>
+</table>
+
 `frontier_exploration_ros2` is a powerful open-source autonomous exploration package built for modern mobile robots. It is fast, reliable, and designed to make autonomous exploration feel practical, polished, and ready for real-world use.
 
 Built and validated with ROS 2 Jazzy, it is still written with flexibility in mind. It fits naturally into Nav2-based projects, custom ROS 2 systems, and broader robotics workflows without making the exploration logic feel locked to a narrow setup.
@@ -127,6 +152,7 @@ In practice, that makes the package easier to reuse in Nav2 deployments, custom 
 | `v1.4.0` | Added [demo repository](#demo-repository) and improved Nav2 stability                                                                                                                                                                                                                                                                  |
 | `v1.5.0` | Added [bounded-horizon DP ordering](#bounded-horizon-dp-ordering), bug fixes, and performance and stability improvements                                                                                                                                                                                                               |
 | `v1.6.0` | Added accurate distance calculation, grid based caching for map optimization, better distance and direction scoring for MRTSP, map processing refresh rate, better guarding for Nav2 failures. <br> Optimized preemption CPU usage. <br> Improved stability of the exploration and general performance. <br> Deprecated `nearest` mode |
+| `v1.6.1` | Added ROS 2 Humble support. Improved launch parameter compatibility and debug marker handling.                                                                                                                                                                                                                                         |
 
 <p align="right"><a href="#frontier_exploration_ros2">back to top</a></p>
 
@@ -134,8 +160,8 @@ In practice, that makes the package easier to reuse in Nav2 deployments, custom 
 
 The implementation has been validated in a ROS 2 Jazzy exploration stack built around:
 
-- Ubuntu 24.04
-- ROS 2 Jazzy
+- Ubuntu 24.04 & ROS 2 Jazzy
+- Ubuntu 22.04 & ROS 2 Humble
 - Gazebo Harmonic
 - Nav2
 - Slam Toolbox
@@ -1695,8 +1721,8 @@ The packaged launch path uses `config/params.yaml` as its baseline parameter fil
 
 | Parameter                                   | Type     | Default | Description                                                                                              | Notes                                                                                                                                                                                                                                                                                                                        |
 | ------------------------------------------- | -------- | ------- | -------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `frontier_candidate_min_goal_distance_m`    | `double` | `0.0`   | Minimum robot-to-candidate distance applied during frontier candidate construction                       | Early search/materialization control used while building reachable dispatch goals; packaged configs override this to `0.5` or `0.8`                                                                                                                                                                                                   |
-| `frontier_selection_min_distance`           | `double` | `0.5`   | Minimum robot-to-goal distance preferred during final dispatch generation                                | If the chosen dispatch point is too close, the code searches for the closest free replacement point that still satisfies this distance when possible                                                                                                                                |
+| `frontier_candidate_min_goal_distance_m`    | `double` | `0.0`   | Minimum robot-to-candidate distance applied during frontier candidate construction                       | Early search/materialization control used while building reachable dispatch goals; packaged configs override this to `0.5` or `0.8`                                                                                                                                                                                          |
+| `frontier_selection_min_distance`           | `double` | `0.5`   | Minimum robot-to-goal distance preferred during final dispatch generation                                | If the chosen dispatch point is too close, the code searches for the closest free replacement point that still satisfies this distance when possible                                                                                                                                                                         |
 | `escape_enabled`                            | `bool`   | `false` | Retries frontier search and dispatch without minimum-distance gates when the normal search finds nothing | Intended to break startup lockups when short LiDAR range or SLAM motion thresholds prevent enough initial map opening; packaged example configs enable it explicitly                                                                                                                                                         |
 | `frontier_visit_tolerance`                  | `double` | `0.30`  | Tolerance used for frontier equivalence and already-visited checks                                       | Also drives quantized frontier signatures and suppression attempt bucketing                                                                                                                                                                                                                                                  |
 | `goal_preemption_enabled`                   | `bool`   | `false` | Enables target-pose visible-reveal-gain-based frontier preemption while a frontier goal is active        | Packaged `config/params.yaml` overrides this to `true`, so the default launch path runs with preemption enabled                                                                                                                                                                                                              |
